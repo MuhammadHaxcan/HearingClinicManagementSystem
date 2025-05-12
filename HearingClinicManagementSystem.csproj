@@ -56,6 +56,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Data\StaticDataProvider.cs" />
     <Compile Include="Models\Appointment.cs" />
     <Compile Include="Models\AudiogramData.cs" />
     <Compile Include="Models\Audiologist.cs" />
