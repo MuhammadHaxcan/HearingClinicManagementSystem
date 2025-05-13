@@ -63,46 +63,86 @@ namespace HearingClinicManagementSystem.Data
             Users = new List<User>
             {
                 // Patients
-                new User { UserID = 1, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com", Phone = "555-123-4567", Role = "Patient", Username = "johndoe", PasswordHash = "hashed_password_1", IsActive = true },
-                new User { UserID = 2, FirstName = "Jane", LastName = "Smith", Email = "jane.smith@example.com", Phone = "555-234-5678", Role = "Patient", Username = "janesmith", PasswordHash = "hashed_password_2", IsActive = true },
-                new User { UserID = 3, FirstName = "Michael", LastName = "Johnson", Email = "michael.johnson@example.com", Phone = "555-345-6789", Role = "Patient", Username = "michaelj", PasswordHash = "hashed_password_3", IsActive = true },
-                new User { UserID = 4, FirstName = "Emily", LastName = "Brown", Email = "emily.brown@example.com", Phone = "555-456-7890", Role = "Patient", Username = "emilyb", PasswordHash = "hashed_password_4", IsActive = true },
-                new User { UserID = 5, FirstName = "David", LastName = "Wilson", Email = "david.wilson@example.com", Phone = "555-567-8901", Role = "Patient", Username = "davidw", PasswordHash = "hashed_password_5", IsActive = true },
+                new User { UserID = 1, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com", Phone = "555-123-4567", Role = "Patient", Username = "johndoe", PasswordHash = "password", IsActive = true },
+                new User { UserID = 2, FirstName = "Jane", LastName = "Smith", Email = "jane.smith@example.com", Phone = "555-234-5678", Role = "Patient", Username = "janesmith", PasswordHash = "password", IsActive = true },
+                new User { UserID = 3, FirstName = "Michael", LastName = "Johnson", Email = "michael.johnson@example.com", Phone = "555-345-6789", Role = "Patient", Username = "michaelj", PasswordHash = "password", IsActive = true },
+                new User { UserID = 4, FirstName = "Emily", LastName = "Brown", Email = "emily.brown@example.com", Phone = "555-456-7890", Role = "Patient", Username = "emilyb", PasswordHash = "password", IsActive = true },
+                new User { UserID = 5, FirstName = "David", LastName = "Wilson", Email = "david.wilson@example.com", Phone = "555-567-8901", Role = "Patient", Username = "davidw", PasswordHash = "password", IsActive = true },
                 
                 // Audiologists
-                new User { UserID = 6, FirstName = "Sarah", LastName = "Davis", Email = "sarah.davis@clinic.com", Phone = "555-678-9012", Role = "Audiologist", Username = "sarahd", PasswordHash = "hashed_password_6", IsActive = true },
-                new User { UserID = 7, FirstName = "Robert", LastName = "Miller", Email = "robert.miller@clinic.com", Phone = "555-789-0123", Role = "Audiologist", Username = "robertm", PasswordHash = "hashed_password_7", IsActive = true },
+                new User { UserID = 6, FirstName = "Sarah", LastName = "Davis", Email = "sarah.davis@clinic.com", Phone = "555-678-9012", Role = "Audiologist", Username = "sarahd", PasswordHash = "password", IsActive = true },
+                new User { UserID = 7, FirstName = "Robert", LastName = "Miller", Email = "robert.miller@clinic.com", Phone = "555-789-0123", Role = "Audiologist", Username = "robertm", PasswordHash = "password", IsActive = true },
                 
                 // Receptionists
-                new User { UserID = 8, FirstName = "Jennifer", LastName = "Taylor", Email = "jennifer.taylor@clinic.com", Phone = "555-890-1234", Role = "Receptionist", Username = "jennifert", PasswordHash = "hashed_password_8", IsActive = true },
+                new User { UserID = 8, FirstName = "Jennifer", LastName = "Taylor", Email = "jennifer.taylor@clinic.com", Phone = "555-890-1234", Role = "Receptionist", Username = "jennifert", PasswordHash = "password", IsActive = true },
                 
                 // Inventory Managers
-                new User { UserID = 9, FirstName = "William", LastName = "Anderson", Email = "william.anderson@clinic.com", Phone = "555-901-2345", Role = "InventoryManager", Username = "williama", PasswordHash = "hashed_password_9", IsActive = true },
+                new User { UserID = 9, FirstName = "William", LastName = "Anderson", Email = "william.anderson@clinic.com", Phone = "555-901-2345", Role = "InventoryManager", Username = "williama", PasswordHash = "password", IsActive = true },
                 
                 // Clinic Managers
-                new User { UserID = 10, FirstName = "Patricia", LastName = "Thomas", Email = "patricia.thomas@clinic.com", Phone = "555-012-3456", Role = "ClinicManager", Username = "patriciat", PasswordHash = "hashed_password_10", IsActive = true }
+                new User { UserID = 10, FirstName = "Patricia", LastName = "Thomas", Email = "patricia.thomas@clinic.com", Phone = "555-012-3456", Role = "ClinicManager", Username = "patriciat", PasswordHash = "password", IsActive = true }
             };
         }
 
         private static void InitializePatients()
         {
             Patients = new List<Patient>
-            {
-                new Patient { PatientID = 1, UserID = 1, DateOfBirth = new DateTime(1980, 5, 15), Address = "123 Main St, Anytown, USA" },
-                new Patient { PatientID = 2, UserID = 2, DateOfBirth = new DateTime(1975, 8, 22), Address = "456 Oak Ave, Anytown, USA" },
-                new Patient { PatientID = 3, UserID = 3, DateOfBirth = new DateTime(1992, 3, 10), Address = "789 Pine Rd, Anytown, USA" },
-                new Patient { PatientID = 4, UserID = 4, DateOfBirth = new DateTime(1988, 11, 30), Address = "321 Elm St, Anytown, USA" },
-                new Patient { PatientID = 5, UserID = 5, DateOfBirth = new DateTime(1965, 7, 8), Address = "654 Maple Dr, Anytown, USA" }
-            };
+    {
+        new Patient {
+            PatientID = 1,
+            UserID = 1,
+            User = Users.First(u => u.UserID == 1),  // Add this line
+            DateOfBirth = new DateTime(1980, 5, 15),
+            Address = "123 Main St, Anytown, USA"
+        },
+        new Patient {
+            PatientID = 2,
+            UserID = 2,
+            User = Users.First(u => u.UserID == 2),  // Add this line
+            DateOfBirth = new DateTime(1975, 8, 22),
+            Address = "456 Oak Ave, Anytown, USA"
+        },
+        new Patient {
+            PatientID = 3,
+            UserID = 3,
+            User = Users.First(u => u.UserID == 3),  // Add this line
+            DateOfBirth = new DateTime(1992, 3, 10),
+            Address = "789 Pine Rd, Anytown, USA"
+        },
+        new Patient {
+            PatientID = 4,
+            UserID = 4,
+            User = Users.First(u => u.UserID == 4),  // Add this line
+            DateOfBirth = new DateTime(1988, 11, 30),
+            Address = "321 Elm St, Anytown, USA"
+        },
+        new Patient {
+            PatientID = 5,
+            UserID = 5,
+            User = Users.First(u => u.UserID == 5),  // Add this line
+            DateOfBirth = new DateTime(1965, 7, 8),
+            Address = "654 Maple Dr, Anytown, USA"
+        }
+    };
         }
 
         private static void InitializeAudiologists()
         {
             Audiologists = new List<Audiologist>
-            {
-                new Audiologist { AudiologistID = 1, UserID = 6, Specialization = "Pediatric Audiology" },
-                new Audiologist { AudiologistID = 2, UserID = 7, Specialization = "Geriatric Audiology" }
-            };
+    {
+        new Audiologist {
+            AudiologistID = 1,
+            UserID = 6,
+            User = Users.First(u => u.UserID == 6),  // Add this line
+            Specialization = "Pediatric Audiology"
+        },
+        new Audiologist {
+            AudiologistID = 2,
+            UserID = 7,
+            User = Users.First(u => u.UserID == 7),  // Add this line
+            Specialization = "Geriatric Audiology"
+        }
+    };
         }
 
         private static void InitializeReceptionists()
