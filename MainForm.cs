@@ -198,6 +198,7 @@ namespace HearingClinicManagementSystem
         {
             AddSidebarButton("Manage Appointments", () => OpenForm(new UI.Receptionist.ManageAppointmentForm()));
             AddSidebarButton("Create Appointment", () => OpenForm(new UI.Receptionist.CreateAppointmentForm()));
+            AddSidebarButton("Process Payments.", () => OpenForm(new UI.Receptionist.PaymentCollectionForm()));
             // Future receptionist menu items will be added here
         }
 

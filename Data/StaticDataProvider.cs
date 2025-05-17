@@ -236,7 +236,7 @@ namespace HearingClinicManagementSystem.Data
                     TimeSlotID = 1,
                     PurposeOfVisit = "Initial consultation",
                     Status = "Completed",
-                    Fee = 150.00m,
+                    Fee = 200.00m,
                     FollowUpRequired = true,
                     FollowUpDate = DateTime.Now.AddDays(30)
                 },

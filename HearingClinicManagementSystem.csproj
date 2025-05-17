@@ -107,6 +107,9 @@
     <Compile Include="UI\Receptionist\CreateAppointmentForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="UI\Receptionist\PaymentCollectionForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="UI\Receptionist\ManageAppointmentForm.cs">
       <SubType>Form</SubType>
     </Compile>
