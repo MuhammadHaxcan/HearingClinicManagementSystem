@@ -1,11 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Drawing;
 using System.Windows.Forms;
 using HearingClinicManagementSystem.Data;
 using HearingClinicManagementSystem.Services;
@@ -16,6 +11,7 @@ namespace HearingClinicManagementSystem.UI.Patient
 {
     public class UpdatePersonalInfoForm : BaseForm
     {
+        #region Fields
         private TextBox txtFirstName;
         private TextBox txtLastName;
         private TextBox txtEmail;
@@ -23,6 +19,7 @@ namespace HearingClinicManagementSystem.UI.Patient
         private DateTimePicker dtpDateOfBirth;
         private TextBox txtAddress;
         private Button btnSave;
+        #endregion
 
         public UpdatePersonalInfoForm()
         {
@@ -30,39 +27,104 @@ namespace HearingClinicManagementSystem.UI.Patient
             LoadPatientData();
         }
 
+        #region UI Setup
         private void InitializeComponents()
         {
             this.Text = AppStrings.Titles.UpdatePersonalInfo;
 
+            // Form title
             var lblTitle = CreateTitleLabel(AppStrings.Titles.UpdatePersonalInfo);
-            this.Controls.Add(lblTitle);
+            lblTitle.Dock = DockStyle.Top;
 
+            // Main layout using TableLayoutPanel for vertical centering
+            TableLayoutPanel mainPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = new Padding(10),
+                RowStyles = {
+                    new RowStyle(SizeType.Percent, 70F), // Adjusted to take more space
+                    new RowStyle(SizeType.Percent, 30F)  // Save button section
+                }
+            };
+
+            // Upper section for form fields
+            TableLayoutPanel fieldsPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 6,
+                Padding = new Padding(10)
+            };
+
+            fieldsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F)); // Label column
+            fieldsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F)); // Input field column
+
+            // Initialize form fields
+            InitializeFormFields(fieldsPanel);
+
+            // Lower section for the save button
+            TableLayoutPanel buttonPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 1,
+                Padding = new Padding(10)
+            };
+
+            // Initialize Save button
+            btnSave = CreateButton("Save Changes", 0, 0, BtnSave_Click, 150, 30);
+            ApplyButtonStyle(btnSave);
+            buttonPanel.Controls.Add(btnSave);
+
+            // Add panels to the main panel
+            mainPanel.Controls.Add(fieldsPanel, 0, 0);
+            mainPanel.Controls.Add(buttonPanel, 0, 1);
+
+            // Add controls to the form
+            this.Controls.Add(lblTitle);
+            this.Controls.Add(mainPanel);
+        }
+
+        private void InitializeFormFields(TableLayoutPanel parent)
+        {
             // First Name
-            var lblFirstName = CreateLabel("First Name:", UIConstants.Padding.Medium, lblTitle.Bottom + UIConstants.Padding.Medium);
+            var lblFirstName = CreateLabel("First Name:", 0, 0);
             txtFirstName = CreateTextBox(lblFirstName.Right + UIConstants.Padding.Small, lblFirstName.Top);
+            parent.Controls.Add(lblFirstName, 0, 0);
+            parent.Controls.Add(txtFirstName, 1, 0);
 
             // Last Name
-            var lblLastName = CreateLabel("Last Name:", UIConstants.Padding.Medium, lblFirstName.Bottom + UIConstants.Padding.Medium);
+            var lblLastName = CreateLabel("Last Name:", 0, lblFirstName.Bottom + UIConstants.Padding.Medium);
             txtLastName = CreateTextBox(lblLastName.Right + UIConstants.Padding.Small, lblLastName.Top);
+            parent.Controls.Add(lblLastName, 0, 1);
+            parent.Controls.Add(txtLastName, 1, 1);
 
             // Email
-            var lblEmail = CreateLabel("Email:", UIConstants.Padding.Medium, lblLastName.Bottom + UIConstants.Padding.Medium);
+            var lblEmail = CreateLabel("Email:", 0, lblLastName.Bottom + UIConstants.Padding.Medium);
             txtEmail = CreateTextBox(lblEmail.Right + UIConstants.Padding.Small, lblEmail.Top);
+            parent.Controls.Add(lblEmail, 0, 2);
+            parent.Controls.Add(txtEmail, 1, 2);
 
             // Phone
-            var lblPhone = CreateLabel("Phone:", UIConstants.Padding.Medium, lblEmail.Bottom + UIConstants.Padding.Medium);
+            var lblPhone = CreateLabel("Phone:", 0, lblEmail.Bottom + UIConstants.Padding.Medium);
             txtPhone = CreateTextBox(lblPhone.Right + UIConstants.Padding.Small, lblPhone.Top);
+            parent.Controls.Add(lblPhone, 0, 3);
+            parent.Controls.Add(txtPhone, 1, 3);
 
             // Date of Birth
-            var lblDob = CreateLabel("Date of Birth:", UIConstants.Padding.Medium, lblPhone.Bottom + UIConstants.Padding.Medium);
+            var lblDob = CreateLabel("Date of Birth:", 0, lblPhone.Bottom + UIConstants.Padding.Medium);
             dtpDateOfBirth = new DateTimePicker
             {
                 Location = new Point(lblDob.Right + UIConstants.Padding.Small, lblDob.Top),
                 Width = UIConstants.Size.StandardTextBoxWidth
             };
+            parent.Controls.Add(lblDob, 0, 4);
+            parent.Controls.Add(dtpDateOfBirth, 1, 4);
 
             // Address
-            var lblAddress = CreateLabel("Address:", UIConstants.Padding.Medium, lblDob.Bottom + UIConstants.Padding.Medium);
+            var lblAddress = CreateLabel("Address:", 0, lblDob.Bottom + UIConstants.Padding.Medium);
             txtAddress = new TextBox
             {
                 Location = new Point(lblAddress.Right + UIConstants.Padding.Small, lblAddress.Top),
@@ -70,30 +132,13 @@ namespace HearingClinicManagementSystem.UI.Patient
                 Multiline = true,
                 Height = 60
             };
-
-            // Save button
-            btnSave = CreateButton("Save Changes", UIConstants.Padding.Medium, txtAddress.Bottom + UIConstants.Padding.Medium, BtnSave_Click);
-
-            this.Controls.AddRange(new Control[] {
-            lblFirstName, txtFirstName, lblLastName, txtLastName,
-            lblEmail, txtEmail, lblPhone, txtPhone,
-            lblDob, dtpDateOfBirth, lblAddress, txtAddress, btnSave
-        });
+            parent.Controls.Add(lblAddress, 0, 5);
+            parent.Controls.Add(txtAddress, 1, 5);
         }
 
-        private void LoadPatientData()
-        {
-            var patient = AuthService.CurrentPatient;
-            var user = StaticDataProvider.Users.First(u => u.UserID == patient.UserID);
+        #endregion
 
-            txtFirstName.Text = user.FirstName;
-            txtLastName.Text = user.LastName;
-            txtEmail.Text = user.Email;
-            txtPhone.Text = user.Phone;
-            dtpDateOfBirth.Value = patient.DateOfBirth;
-            txtAddress.Text = patient.Address;
-        }
-
+        #region Event Handlers
         private void BtnSave_Click(object sender, EventArgs e)
         {
             if (string.IsNullOrWhiteSpace(txtFirstName.Text) || string.IsNullOrWhiteSpace(txtLastName.Text) ||
@@ -119,5 +164,51 @@ namespace HearingClinicManagementSystem.UI.Patient
 
             UIService.ShowSuccess("Personal information updated successfully!");
         }
+        #endregion
+
+        #region Helper Methods
+        public void ApplyButtonStyle(Button button)
+        {
+            // Use a more professional blue color
+            button.BackColor = Color.FromArgb(51, 122, 183);
+            button.ForeColor = Color.White;
+            button.FlatStyle = FlatStyle.Flat;
+
+            // Add a subtle border
+            button.FlatAppearance.BorderSize = 1;
+            button.FlatAppearance.BorderColor = Color.FromArgb(40, 96, 144);
+
+            // Improve text appearance
+            button.Font = new Font(button.Font.FontFamily, button.Font.Size, FontStyle.Italic);
+            button.TextAlign = ContentAlignment.MiddleCenter;
+
+            // Add hover and press effects
+            button.MouseEnter += (s, e) => {
+                button.BackColor = Color.FromArgb(40, 96, 144); // Darker blue on hover
+            };
+
+            button.MouseLeave += (s, e) => {
+                button.BackColor = Color.FromArgb(51, 122, 183); // Return to original blue
+            };
+
+            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(25, 71, 109); // Even darker when pressed
+
+            // Create slight shadow effect using border
+            button.FlatAppearance.BorderColor = Color.FromArgb(40, 96, 144);
+        }
+
+        private void LoadPatientData()
+        {
+            var patient = AuthService.CurrentPatient;
+            var user = StaticDataProvider.Users.First(u => u.UserID == patient.UserID);
+
+            txtFirstName.Text = user.FirstName;
+            txtLastName.Text = user.LastName;
+            txtEmail.Text = user.Email;
+            txtPhone.Text = user.Phone;
+            dtpDateOfBirth.Value = patient.DateOfBirth;
+            txtAddress.Text = patient.Address;
+        }
+        #endregion
     }
 }

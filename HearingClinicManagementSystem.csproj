@@ -86,6 +86,7 @@
     <Compile Include="UI\Common\BaseForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="UI\Constants\HelperMethods.cs" />
     <Compile Include="UI\Constants\AppStrings.cs" />
     <Compile Include="UI\Constants\UIConstants.cs" />
     <Compile Include="UI\Forms\DashboardForm.cs">
@@ -103,6 +104,12 @@
     <Compile Include="UI\Patient\UpdatePersonalInfoForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="UI\Receptionist\CreateAppointmentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\Receptionist\ManageAppointmentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -112,6 +119,12 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <EmbeddedResource Include="UI\Forms\DashboardForm.resx">
+      <DependentUpon>DashboardForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\Patient\ManageAppointmentForm.resx">
+      <DependentUpon>ManageAppointmentForm.cs</DependentUpon>
+    </EmbeddedResource>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>

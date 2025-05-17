@@ -1,46 +1,42 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using HearingClinicManagementSystem.Data;
+﻿using HearingClinicManagementSystem.Data;
+using HearingClinicManagementSystem.Models;
+using HearingClinicManagementSystem.Services;
+using HearingClinicManagementSystem.UI;
+using HearingClinicManagementSystem.UI.Constants;
 using HearingClinicManagementSystem.UI.Forms;
 using HearingClinicManagementSystem.UI.Patient;
-using HearingClinicManagementSystem.UI.Constants;
-using HearingClinicManagementSystem.Services;
+using HearingClinicManagementSystem.UI.Receptionist;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
+using ManageAppointmentForm = HearingClinicManagementSystem.UI.Patient.ManageAppointmentForm;
 
 namespace HearingClinicManagementSystem
 {
-    // MainForm.cs
     public class MainForm : Form
     {
+        #region Fields
         private Panel sidebarPanel;
         private Panel contentPanel;
         private Form currentForm;
-
-        // Sidebar navigation buttons
-        private Button btnDashboard;
-        private Button btnManageAppointment;
-        private Button btnPurchaseHearingAid;
-        private Button btnViewMedicalHistory;
-        private Button btnUpdatePersonalInfo;
+        private Dictionary<string, Button> sidebarButtons = new Dictionary<string, Button>();
+        private bool dashboardOpened = false; // Flag to track if dashboard has been opened
+        #endregion
 
         public MainForm()
         {
             InitializeLayout();
-            SetupSidebar();
+            InitializeSidebar();
 
             // Initialize static data
             StaticDataProvider.Initialize();
 
             // Show the dashboard by default
-            ShowForm(new DashboardForm());
+            OpenForm(new DashboardForm());
         }
 
+        #region UI Setup
         private void InitializeLayout()
         {
             // Set form properties
@@ -53,20 +49,22 @@ namespace HearingClinicManagementSystem
             {
                 Dock = DockStyle.Left,
                 Width = UIConstants.Size.SidebarWidth,
-                BackColor = Color.LightGray
+                BackColor = Color.FromArgb(51, 51, 76), // Dark blue-gray for professional look
+                Padding = new Padding(0, 0, 0, 20) // Add bottom padding
             };
 
             contentPanel = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(UIConstants.Padding.Medium)
+                Padding = new Padding(UIConstants.Padding.Medium),
+                BackColor = Color.White
             };
 
             this.Controls.Add(contentPanel);
             this.Controls.Add(sidebarPanel);
         }
 
-        private void SetupSidebar()
+        private void InitializeSidebar()
         {
             // Add logo or app name at the top of sidebar
             Label lblAppName = new Label
@@ -75,42 +73,84 @@ namespace HearingClinicManagementSystem
                 Dock = DockStyle.Top,
                 Height = UIConstants.Layout.TopBarHeight,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold),
-                BackColor = Color.DarkGray,
+                Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold),
+                BackColor = Color.FromArgb(39, 39, 58), // Darker than sidebar
                 ForeColor = Color.White
             };
             sidebarPanel.Controls.Add(lblAppName);
 
-            // Create navigation buttons
-            btnDashboard = CreateSidebarButton(AppStrings.Titles.Dashboard, 0);
-            btnManageAppointment = CreateSidebarButton(AppStrings.Titles.ManageAppointment, 1);
-            btnPurchaseHearingAid = CreateSidebarButton(AppStrings.Titles.PurchaseHearingAid, 2);
-            btnViewMedicalHistory = CreateSidebarButton(AppStrings.Titles.MedicalHistory, 3);
-            btnUpdatePersonalInfo = CreateSidebarButton(AppStrings.Titles.UpdatePersonalInfo, 4);
+            // Add separator below the header
+            Panel separator = new Panel
+            {
+                Height = 2,
+                Dock = DockStyle.Top,
+                BackColor = Color.FromArgb(73, 73, 108) // Slightly lighter than sidebar
+            };
+            sidebarPanel.Controls.Add(separator);
 
-            // Initially hide patient-specific buttons
-            btnManageAppointment.Visible = AuthService.IsLoggedIn;
-            btnPurchaseHearingAid.Visible = AuthService.IsLoggedIn;
-            btnViewMedicalHistory.Visible = AuthService.IsLoggedIn;
-            btnUpdatePersonalInfo.Visible = AuthService.IsLoggedIn;
+            // Always add Dashboard button
+            AddSidebarButton("Dashboard", () => OpenForm(new DashboardForm()));
 
-            // Add event handlers for each button
-            btnDashboard.Click += (s, e) => ShowForm(new DashboardForm());
-            btnManageAppointment.Click += (s, e) => ShowForm(new  ManageAppointmentForm());
-            btnPurchaseHearingAid.Click += (s, e) => ShowForm(new PurchaseHearingAidForm());
-            btnViewMedicalHistory.Click += (s, e) => ShowForm(new ViewMedicalHistoryForm());
-            btnUpdatePersonalInfo.Click += (s, e) => ShowForm(new UpdatePersonalInfoForm());
+            // Set up the rest of the sidebar based on current login state
+            UpdateSidebarForCurrentUser();
 
-            // Add the buttons to the sidebar
-            sidebarPanel.Controls.Add(btnUpdatePersonalInfo);
-            sidebarPanel.Controls.Add(btnViewMedicalHistory);
-            sidebarPanel.Controls.Add(btnPurchaseHearingAid);
-            sidebarPanel.Controls.Add(btnManageAppointment);
-            sidebarPanel.Controls.Add(btnDashboard);
+            // Subscribe to login success event
+            UIService.UserLoggedIn += UIService_UserLoggedIn;
+            UIService.UserLoggedOut += UIService_UserLoggedOut;
         }
 
-        private Button CreateSidebarButton(string text, int position)
+        private void UpdateSidebarForCurrentUser()
         {
+            // Clear existing menu items except Dashboard
+            foreach (var key in new List<string>(sidebarButtons.Keys))
+            {
+                if (key != "Dashboard")
+                {
+                    var btn = sidebarButtons[key];
+                    sidebarPanel.Controls.Remove(btn);
+                    btn.Dispose();
+                    sidebarButtons.Remove(key);
+                }
+            }
+
+            // No need to add Dashboard button again, it's already there
+
+            if (!AuthService.IsLoggedIn)
+                return;
+
+            // Add menu items based on user role
+            switch (AuthService.CurrentUser.Role)
+            {
+                case "Patient":
+                    AddPatientMenuItems();
+                    break;
+                case "Receptionist":
+                    AddReceptionistMenuItems();
+                    break;
+                case "Audiologist":
+                    AddAudiologistMenuItems();
+                    break;
+                case "InventoryManager":
+                    AddInventoryManagerMenuItems();
+                    break;
+                case "ClinicManager":
+                    AddClinicManagerMenuItems();
+                    break;
+            }
+        }
+
+        private Button AddSidebarButton(string text, Action clickAction)
+        {
+            // If the button already exists, remove it and create a new one
+            // This is a more reliable approach than trying to detach event handlers
+            if (sidebarButtons.TryGetValue(text, out Button existingButton))
+            {
+                sidebarPanel.Controls.Remove(existingButton);
+                existingButton.Dispose();
+                sidebarButtons.Remove(text);
+            }
+
+            // Create a new button
             var btn = new Button
             {
                 Text = text,
@@ -118,52 +158,133 @@ namespace HearingClinicManagementSystem
                 Height = UIConstants.Layout.SidebarButtonHeight,
                 TextAlign = ContentAlignment.MiddleLeft,
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.LightGray,
+                BackColor = Color.FromArgb(51, 51, 76), // Match sidebar color
+                ForeColor = Color.Gainsboro,
+                Image = null, // Can add icons here if needed
+                ImageAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(10, 0, 0, 0),
+                Font = new Font(this.Font.FontFamily, 10, FontStyle.Regular)
             };
 
             // Set button appearance
             btn.FlatAppearance.BorderSize = 0;
-            btn.Font = new Font(this.Font.FontFamily, 9, FontStyle.Regular);
+            btn.FlatAppearance.MouseDownBackColor = Color.FromArgb(25, 25, 38);
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(64, 64, 92);
 
-            // Create hover effect
-            btn.MouseEnter += (s, e) => { btn.BackColor = Color.Silver; };
-            btn.MouseLeave += (s, e) => { btn.BackColor = Color.LightGray; };
+            // Add click event handler
+            if (clickAction != null)
+            {
+                btn.Click += (s, e) => clickAction();
+            }
+
+            // Store the button in our dictionary
+            sidebarButtons[text] = btn;
+
+            // Add to sidebar
+            sidebarPanel.Controls.Add(btn);
 
             return btn;
         }
 
-        private void ShowForm(Form form)
+        private void AddPatientMenuItems()
         {
+            AddSidebarButton("Manage Appointments", () => OpenForm(new ManageAppointmentForm()));
+            AddSidebarButton("Purchase Hearing Aid", () => OpenForm(new PurchaseHearingAidForm()));
+            AddSidebarButton("View Medical History", () => OpenForm(new ViewMedicalHistoryForm()));
+            AddSidebarButton("Update Personal Info", () => OpenForm(new UpdatePersonalInfoForm()));
+        }
+
+        private void AddReceptionistMenuItems()
+        {
+            AddSidebarButton("Manage Appointments", () => OpenForm(new UI.Receptionist.ManageAppointmentForm()));
+            AddSidebarButton("Create Appointment", () => OpenForm(new UI.Receptionist.CreateAppointmentForm()));
+            // Future receptionist menu items will be added here
+        }
+
+        private void AddAudiologistMenuItems()
+        {
+            // Future audiologist menu items will be added here
+            AddSidebarButton("View Appointments", null);
+        }
+
+        private void AddInventoryManagerMenuItems()
+        {
+            // Future inventory manager menu items will be added here
+            AddSidebarButton("Manage Inventory", null);
+        }
+
+        private void AddClinicManagerMenuItems()
+        {
+            // Future clinic manager menu items will be added here
+            AddSidebarButton("View Reports", null);
+        }
+        #endregion
+
+        #region Event Handlers
+        private void UIService_UserLoggedIn(object sender, EventArgs e)
+        {
+            UpdateSidebarForCurrentUser();
+
+            // No need to open dashboard again as the login was handled on existing dashboard
+            // Just make sure the current form is refreshed to reflect login state
+            if (currentForm is DashboardForm)
+            {
+                // Update the current form to reflect login changes
+                DisplayCurrentForm();
+            }
+        }
+
+        private void UIService_UserLoggedOut(object sender, EventArgs e)
+        {
+            UpdateSidebarForCurrentUser();
+
+            // Open dashboard after logout if not already on dashboard
+            if (!(currentForm is DashboardForm))
+            {
+                OpenForm(new DashboardForm());
+            }
+            else
+            {
+                // Update the current form to reflect logout changes
+                DisplayCurrentForm();
+            }
+        }
+        #endregion
+
+        #region Helper Methods
+        private void OpenForm(Form form)
+        {
+            // If we're already on a dashboard and trying to open another one, skip
+            if (currentForm is DashboardForm && form is DashboardForm)
+            {
+                return;
+            }
+
             // Remove current form
             if (currentForm != null)
             {
                 currentForm.Close();
                 currentForm.Dispose();
+                currentForm = null;
             }
 
             // Set up and display new form
             currentForm = form;
-            form.TopLevel = false;
-            form.FormBorderStyle = FormBorderStyle.None;
-            form.Dock = DockStyle.Fill;
-            contentPanel.Controls.Clear();
-            contentPanel.Controls.Add(form);
-            form.Show();
-
-            // Enable sidebar buttons after login (if LoginSuccess event triggered)
-            if (form is DashboardForm dashboard)
-            {
-                dashboard.LoginSuccess += Dashboard_LoginSuccess;
-            }
+            DisplayCurrentForm();
         }
 
-        private void Dashboard_LoginSuccess(object sender, EventArgs e)
+        private void DisplayCurrentForm()
         {
-            // Show patient-related buttons after successful login
-            btnManageAppointment.Visible = true;
-            btnPurchaseHearingAid.Visible = true;
-            btnViewMedicalHistory.Visible = true;
-            btnUpdatePersonalInfo.Visible = true;
+            if (currentForm == null) return;
+
+            currentForm.TopLevel = false;
+            currentForm.FormBorderStyle = FormBorderStyle.None;
+            currentForm.Dock = DockStyle.Fill;
+
+            contentPanel.Controls.Clear();
+            contentPanel.Controls.Add(currentForm);
+            currentForm.Show();
         }
+        #endregion
     }
 }

@@ -500,5 +500,17 @@ namespace HearingClinicManagementSystem.UI.Patient
             LoadAvailableTimeSlots();
         }
         #endregion
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // ManageAppointmentForm
+            // 
+            this.ClientSize = new System.Drawing.Size(1250, 785);
+            this.Name = "ManageAppointmentForm";
+            this.ResumeLayout(false);
+
+        }
     }
 }

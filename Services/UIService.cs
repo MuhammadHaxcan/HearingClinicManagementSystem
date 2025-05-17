@@ -9,6 +9,22 @@ namespace HearingClinicManagementSystem.Services
 {
     public static class UIService
     {
+        // Add events for login and logout
+        public static event EventHandler UserLoggedIn;
+        public static event EventHandler UserLoggedOut;
+
+        // Method to raise UserLoggedIn event
+        public static void RaiseUserLoggedIn()
+        {
+            UserLoggedIn?.Invoke(null, EventArgs.Empty);
+        }
+
+        // Method to raise UserLoggedOut event
+        public static void RaiseUserLoggedOut()
+        {
+            UserLoggedOut?.Invoke(null, EventArgs.Empty);
+        }
+
         public static void ShowSuccess(string message)
         {
             MessageBox.Show(message, "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
