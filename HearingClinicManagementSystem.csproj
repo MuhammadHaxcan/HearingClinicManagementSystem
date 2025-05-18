@@ -45,6 +45,7 @@
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Windows.Forms.DataVisualization" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -83,6 +84,9 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\AuthService.cs" />
     <Compile Include="Services\UIService.cs" />
+    <Compile Include="UI\Audiologist\HearingTestForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="UI\Common\BaseForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -124,6 +128,7 @@
     </Compile>
     <EmbeddedResource Include="UI\Forms\DashboardForm.resx">
       <DependentUpon>DashboardForm.cs</DependentUpon>
+      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="UI\Patient\ManageAppointmentForm.resx">
       <DependentUpon>ManageAppointmentForm.cs</DependentUpon>

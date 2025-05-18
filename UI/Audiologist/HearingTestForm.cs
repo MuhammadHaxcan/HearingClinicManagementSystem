@@ -1,0 +1,995 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using HearingClinicManagementSystem.Data;
+using HearingClinicManagementSystem.Models;
+using HearingClinicManagementSystem.Services;
+using HearingClinicManagementSystem.UI.Common.HearingClinicManagementSystem.UI.Common;
+
+namespace HearingClinicManagementSystem.UI.Audiologist
+{
+    public class HearingTestForm : BaseForm
+    {
+        #region Fields
+        private DateTimePicker dtpAppointmentDate;
+        private ComboBox cmbAppointments;
+        private Button btnRefreshAppointments;
+        private ComboBox cmbPatients;
+        private ComboBox cmbTestType;
+        private ComboBox cmbEar;
+        private GroupBox grpTestParameters;
+        private GroupBox grpNotes;
+        private NumericUpDown nudFrequency;
+        private NumericUpDown nudThreshold;
+        private Button btnAddDataPoint;
+        private Button btnClearData;
+        private Button btnSaveTest;
+        private RichTextBox rtbNotes;
+        private Panel patientInfoPanel;
+        private Panel appointmentSelectionPanel;
+        private Label lblPatientInfo;
+        private Label lblAppointmentInfo;
+        private DataGridView dgvTestData;
+        private DataGridView dgvTestHistory;
+        private int? selectedAppointmentId;
+        private int? selectedPatientId;
+        #endregion
+
+        public HearingTestForm(int? appointmentId = null, int? patientId = null)
+        {
+            selectedAppointmentId = appointmentId;
+            selectedPatientId = patientId;
+            InitializeComponents();
+            LoadAppointmentsForDate(DateTime.Today);
+            InitializeTestDataGrid();
+
+            // If we have a patientId or appointmentId, try to select the appropriate appointment
+            if (patientId.HasValue || appointmentId.HasValue)
+            {
+                SelectAppointmentForPatientOrAppointmentId(patientId, appointmentId);
+            }
+        }
+
+        // New helper method to select the appropriate appointment
+        private void SelectAppointmentForPatientOrAppointmentId(int? patientId, int? appointmentId)
+        {
+            if (cmbAppointments.Items.Count == 0 || !cmbAppointments.Enabled)
+                return;
+
+            for (int i = 0; i < cmbAppointments.Items.Count; i++)
+            {
+                dynamic item = cmbAppointments.Items[i];
+                // Skip the "no appointments" item
+                if (item.GetType().GetProperty("IsEmpty") != null)
+                    continue;
+
+                var appointment = item.Appointment;
+
+                // Match by appointment ID
+                if (appointmentId.HasValue && appointment.AppointmentID == appointmentId.Value)
+                {
+                    cmbAppointments.SelectedIndex = i;
+                    return;
+                }
+
+                // Match by patient ID (if no appointment ID match was found)
+                if (patientId.HasValue && appointment.PatientID == patientId.Value)
+                {
+                    cmbAppointments.SelectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        #region UI Setup
+        private void InitializeComponents()
+        {
+            this.Text = "Hearing Test";
+            this.Size = new Size(1200, 800);
+
+            // Create title
+            var lblTitle = CreateTitleLabel("Hearing Test");
+            lblTitle.Dock = DockStyle.Top;
+
+            // Main layout with 2 columns
+            TableLayoutPanel mainPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                BackColor = Color.White,
+                Padding = new Padding(5),
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+            };
+
+            // Configure column and row styles
+            mainPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));  // Left column (45%)
+            mainPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));  // Right column (55%)
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 70F));        // Top row
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));        // Bottom row - chief complaints
+
+            // Create the panels for the layout
+            Panel patientPanel = CreatePatientPanel();           // Left column (patient info & history)
+            Panel testInputsPanel = CreateTestInputsPanel();     // Right column, top row (test inputs)
+            Panel chiefComplaintsPanel = CreateChiefComplaintsPanel(); // Bottom row (complaints)
+
+            // Add panels to the main layout
+            mainPanel.Controls.Add(patientPanel, 0, 0);
+            mainPanel.Controls.Add(testInputsPanel, 1, 0);
+            mainPanel.Controls.Add(chiefComplaintsPanel, 0, 1);
+            mainPanel.SetColumnSpan(chiefComplaintsPanel, 2);      // Chief complaints span both columns
+
+            // Add all controls to the form
+            Controls.Add(mainPanel);
+            Controls.Add(lblTitle);
+        }
+
+        private Panel CreatePatientPanel()
+        {
+            Panel panel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Section title
+            Label lblSectionTitle = CreateLabel("Patient Information", 0, 0);
+            lblSectionTitle.Font = new Font(lblSectionTitle.Font, FontStyle.Bold);
+            lblSectionTitle.Dock = DockStyle.Top;
+            lblSectionTitle.Height = 30;
+
+            // Create appointment selection panel with ZERO padding to fix overlap issue
+            appointmentSelectionPanel = new Panel
+            {
+                Location = new Point(10, 40),
+                Width = panel.Width - 20,
+                Height = 120,
+                BorderStyle = BorderStyle.FixedSingle,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Padding = new Padding(0) // Change from Padding(10) to fix white block issue
+            };
+
+            // Place controls with explicit positions instead of relying on panel padding
+            Label lblAppointmentSelectionTitle = CreateLabel("Today's Appointments", 10, 10);
+            lblAppointmentSelectionTitle.Font = new Font(lblAppointmentSelectionTitle.Font, FontStyle.Bold);
+
+            // Date picker for appointment selection
+            Label lblDate = CreateLabel("Select Date:", 10, 40);
+            
+            // Fix: Create DateTimePicker directly instead of using helper method
+            dtpAppointmentDate = new DateTimePicker();
+            dtpAppointmentDate.Location = new Point(120, 38);
+            dtpAppointmentDate.Size = new Size(150, 23);
+            dtpAppointmentDate.Format = DateTimePickerFormat.Short;
+            dtpAppointmentDate.Value = DateTime.Today;
+            dtpAppointmentDate.ValueChanged += DtpAppointmentDate_ValueChanged;
+
+            // Fix: Create Refresh button directly
+            btnRefreshAppointments = new Button();
+            btnRefreshAppointments.Text = "Refresh";
+            btnRefreshAppointments.Size = new Size(90, 25);
+            btnRefreshAppointments.Location = new Point(appointmentSelectionPanel.Width - 110, 38);
+            btnRefreshAppointments.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnRefreshAppointments.Click += BtnRefreshAppointments_Click;
+            ApplyButtonStyle(btnRefreshAppointments, Color.FromArgb(108, 117, 125));
+
+            // Appointments dropdown
+            Label lblSelectAppointment = CreateLabel("Select Appointment:", 10, 75);
+            
+            // Fix: Create ComboBox directly
+            cmbAppointments = new ComboBox();
+            cmbAppointments.Location = new Point(140, 73);
+            cmbAppointments.Size = new Size(appointmentSelectionPanel.Width - 160, 23);
+            cmbAppointments.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cmbAppointments.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbAppointments.SelectedIndexChanged += CmbAppointments_SelectedIndexChanged;
+
+            // Add controls to appointment selection panel
+            appointmentSelectionPanel.Controls.Add(lblAppointmentSelectionTitle);
+            appointmentSelectionPanel.Controls.Add(lblDate);
+            appointmentSelectionPanel.Controls.Add(dtpAppointmentDate);
+            appointmentSelectionPanel.Controls.Add(btnRefreshAppointments);
+            appointmentSelectionPanel.Controls.Add(lblSelectAppointment);
+            appointmentSelectionPanel.Controls.Add(cmbAppointments);
+
+            // Patient info panel - moved up since we removed patient direct selection
+            patientInfoPanel = new Panel
+            {
+                Location = new Point(10, 170), // Adjusted position
+                Width = panel.Width - 20,
+                Height = 50,
+                BorderStyle = BorderStyle.FixedSingle,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Color.FromArgb(248, 249, 250),
+                Padding = new Padding(5)
+            };
+
+            lblPatientInfo = CreateLabel("No patient selected", 5, 5);
+            lblPatientInfo.Font = new Font(lblPatientInfo.Font, FontStyle.Regular);
+            lblAppointmentInfo = CreateLabel("", 5, 25);
+            lblAppointmentInfo.Font = new Font(lblAppointmentInfo.Font, FontStyle.Regular);
+
+            patientInfoPanel.Controls.Add(lblPatientInfo);
+            patientInfoPanel.Controls.Add(lblAppointmentInfo);
+
+            // Test data grid - show 5 rows at a time with scroll (adjusted position)
+            Label lblCurrentData = CreateLabel("Current Test Data", 10, 225);
+            lblCurrentData.Font = new Font(lblCurrentData.Font, FontStyle.Bold);
+
+            dgvTestData = CreateDataGrid(120);
+            dgvTestData.Location = new Point(10, 245);
+            dgvTestData.Size = new Size(panel.Width - 20, 120);
+            dgvTestData.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            dgvTestData.BackgroundColor = Color.White;
+            dgvTestData.BorderStyle = BorderStyle.Fixed3D;
+            dgvTestData.RowHeadersVisible = false;
+            dgvTestData.AllowUserToAddRows = false;
+            dgvTestData.AllowUserToDeleteRows = false;
+            dgvTestData.ReadOnly = true;
+            dgvTestData.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvTestData.ScrollBars = ScrollBars.Vertical;
+
+            // Patient history panel - show only 2 rows (adjusted position)
+            Label lblHistoryTitle = CreateLabel("Patient Test History", 10, 400);
+            lblHistoryTitle.Font = new Font(lblHistoryTitle.Font, FontStyle.Bold);
+
+            Panel patientHistoryPanel = new Panel
+            {
+                Location = new Point(10, 420),
+                Width = panel.Width - 20,
+                Height = 70,
+                BorderStyle = BorderStyle.FixedSingle,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Color.White,
+                Padding = new Padding(1)
+            };
+
+            // Create grid for patient's test history
+            dgvTestHistory = CreateDataGrid(0);
+            dgvTestHistory.Dock = DockStyle.Fill;
+            dgvTestHistory.BackgroundColor = Color.White;
+            dgvTestHistory.BorderStyle = BorderStyle.None;
+            dgvTestHistory.RowHeadersVisible = false;
+            dgvTestHistory.AllowUserToAddRows = false;
+            dgvTestHistory.AllowUserToDeleteRows = false;
+            dgvTestHistory.ReadOnly = true;
+            dgvTestHistory.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvTestHistory.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvTestHistory.ScrollBars = ScrollBars.Vertical;
+
+            // Configure test history columns
+            dgvTestHistory.Columns.Add("TestDate", "Test Date");
+            dgvTestHistory.Columns.Add("TestType", "Test Type");
+            dgvTestHistory.Columns.Add("Diagnosis", "Diagnosis");
+
+            // Add empty data label
+            Label lblNoHistory = new Label
+            {
+                Text = "No test history available for this patient",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 10, FontStyle.Italic),
+                ForeColor = Color.Gray,
+                Visible = true,
+                Tag = "NoHistoryMessage"
+            };
+
+            patientHistoryPanel.Controls.Add(lblNoHistory);
+            patientHistoryPanel.Controls.Add(dgvTestHistory);
+
+            // Add all controls to the panel
+            panel.Controls.Add(patientHistoryPanel);
+            panel.Controls.Add(lblHistoryTitle);
+            panel.Controls.Add(dgvTestData);
+            panel.Controls.Add(lblCurrentData);
+            panel.Controls.Add(patientInfoPanel);
+            panel.Controls.Add(appointmentSelectionPanel);
+            panel.Controls.Add(lblSectionTitle);
+
+            return panel;
+        }
+
+        private Panel CreateTestInputsPanel()
+        {
+            Panel panel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Section title
+            Label lblSectionTitle = CreateLabel("Test Parameters", 0, 0);
+            lblSectionTitle.Font = new Font(lblSectionTitle.Font, FontStyle.Bold);
+            lblSectionTitle.Dock = DockStyle.Top;
+            lblSectionTitle.Height = 30;
+
+            // Create test parameters area with subtle shading and border
+            grpTestParameters = new GroupBox();
+            grpTestParameters.Location = new Point(10, 40);
+            grpTestParameters.Size = new Size(panel.Width - 20, 150);
+            grpTestParameters.Text = "Test Parameters";
+            grpTestParameters.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            grpTestParameters.BackColor = Color.FromArgb(252, 252, 252);
+
+            // Create a table layout for more structured inputs
+            TableLayoutPanel testParamsLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10, 5, 10, 5),
+                ColumnCount = 4,
+                RowCount = 3
+            };
+
+            testParamsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
+            testParamsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+            testParamsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
+            testParamsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+
+            for (int i = 0; i < 3; i++)
+            {
+                testParamsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F));
+            }
+
+            // Test type
+            Label lblTestType = new Label
+            {
+                Text = "Test Type:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            cmbTestType = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, 5, 10, 5)
+            };
+            cmbTestType.Items.AddRange(new object[] { "PureTone", "Speech", "Tympanometry" });
+            cmbTestType.SelectedIndex = 0;
+
+            // Ear selection
+            Label lblEar = new Label
+            {
+                Text = "Ear:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            cmbEar = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, 5, 10, 5)
+            };
+            cmbEar.Items.AddRange(new object[] { "Right", "Left" });
+            cmbEar.SelectedIndex = 0;
+
+            // Frequency input (Hz)
+            Label lblFrequency = new Label
+            {
+                Text = "Frequency (Hz):",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            nudFrequency = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 125,
+                Maximum = 8000,
+                Increment = 125,
+                Value = 1000,
+                ThousandsSeparator = true,
+                Margin = new Padding(0, 5, 10, 5)
+            };
+
+            // Threshold input (dB)
+            Label lblThreshold = new Label
+            {
+                Text = "Threshold (dB):",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            nudThreshold = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = -10,
+                Maximum = 120,
+                Increment = 5,
+                Value = 25,
+                Margin = new Padding(0, 5, 10, 5)
+            };
+
+            // Add controls to the table layout
+            testParamsLayout.Controls.Add(lblTestType, 0, 0);
+            testParamsLayout.Controls.Add(cmbTestType, 1, 0);
+            testParamsLayout.Controls.Add(lblEar, 2, 0);
+            testParamsLayout.Controls.Add(cmbEar, 3, 0);
+            testParamsLayout.Controls.Add(lblFrequency, 0, 1);
+            testParamsLayout.Controls.Add(nudFrequency, 1, 1);
+            testParamsLayout.Controls.Add(lblThreshold, 2, 1);
+            testParamsLayout.Controls.Add(nudThreshold, 3, 1);
+
+            grpTestParameters.Controls.Add(testParamsLayout);
+
+            // Buttons for test data management
+            btnAddDataPoint = CreateButton("Add Data Point", 10, 210, BtnAddDataPoint_Click, 140, 35);
+            btnAddDataPoint.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            ApplyButtonStyle(btnAddDataPoint, Color.FromArgb(0, 123, 255));
+
+            btnClearData = CreateButton("Clear Data", 160, 210, BtnClearData_Click, 120, 35);
+            btnClearData.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            ApplyButtonStyle(btnClearData, Color.FromArgb(108, 117, 125));
+
+            // Save button
+            btnSaveTest = CreateButton("Save Hearing Test", panel.Width - 170, panel.Height - 45, BtnSaveTest_Click, 150, 40);
+            btnSaveTest.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            btnSaveTest.Font = new Font(btnSaveTest.Font, FontStyle.Bold);
+            ApplyButtonStyle(btnSaveTest, Color.FromArgb(40, 167, 69));
+
+            // Add all controls to panel
+            panel.Controls.Add(btnSaveTest);
+            panel.Controls.Add(btnClearData);
+            panel.Controls.Add(btnAddDataPoint);
+            panel.Controls.Add(grpTestParameters);
+            panel.Controls.Add(lblSectionTitle);
+
+            return panel;
+        }
+
+        private Panel CreateChiefComplaintsPanel()
+        {
+            Panel panel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Chief Complaints section
+            Label lblChiefComplaintsTitle = CreateLabel("Chief Complaints", 0, 0);
+            lblChiefComplaintsTitle.Font = new Font(lblChiefComplaintsTitle.Font, FontStyle.Bold);
+            lblChiefComplaintsTitle.Dock = DockStyle.Top;
+            lblChiefComplaintsTitle.Height = 25;
+
+            grpNotes = new GroupBox();
+            grpNotes.Location = new Point(10, 30);
+            grpNotes.Size = new Size(panel.Width - 20, panel.Height - 40);
+            grpNotes.Text = "Patient's Chief Complaints";
+            grpNotes.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            grpNotes.BackColor = Color.FromArgb(252, 252, 252);
+
+            rtbNotes = new RichTextBox();
+            rtbNotes.Location = new Point(10, 25);
+            rtbNotes.Size = new Size(grpNotes.Width - 20, grpNotes.Height - 35);
+            rtbNotes.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            rtbNotes.BorderStyle = BorderStyle.FixedSingle;
+            rtbNotes.Font = new Font("Segoe UI", 10);
+
+            // Update placeholder text for chief complaints
+            rtbNotes.Text = "Enter patient's chief complaints here...\n" +
+                            "Examples:\n" +
+                            "- Difficulty hearing in noisy environments\n" +
+                            "- Ringing in ears";
+
+            // Clear placeholder text on focus
+            rtbNotes.GotFocus += (s, e) =>
+            {
+                if (rtbNotes.Text.StartsWith("Enter patient's chief complaints"))
+                {
+                    rtbNotes.Text = "";
+                }
+            };
+
+            // Add controls to notes group
+            grpNotes.Controls.Add(rtbNotes);
+
+            // Add all controls to panel
+            panel.Controls.Add(grpNotes);
+            panel.Controls.Add(lblChiefComplaintsTitle);
+
+            return panel;
+        }
+
+        private void ApplyButtonStyle(Button button, Color baseColor)
+        {
+            button.ForeColor = Color.White;
+            button.BackColor = baseColor;
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderSize = 1;
+            button.FlatAppearance.BorderColor = ControlPaint.Dark(baseColor);
+            button.Font = new Font(button.Font.FontFamily, button.Font.Size, FontStyle.Regular);
+            button.TextAlign = ContentAlignment.MiddleCenter;
+            button.Cursor = Cursors.Hand;
+            button.UseVisualStyleBackColor = false;
+
+            button.MouseEnter += (s, e) =>
+            {
+                button.BackColor = ControlPaint.Dark(baseColor);
+            };
+            button.MouseLeave += (s, e) =>
+            {
+                button.BackColor = baseColor;
+            };
+        }
+
+        private void InitializeTestDataGrid()
+        {
+            dgvTestData.Columns.Clear();
+            dgvTestData.Columns.Add("Ear", "Ear");
+            dgvTestData.Columns.Add("Frequency", "Frequency (Hz)");
+            dgvTestData.Columns.Add("Threshold", "Threshold (dB)");
+            dgvTestData.Columns.Add("Remove", "");
+
+            // Set column properties
+            dgvTestData.Columns["Ear"].Width = 80;
+            dgvTestData.Columns["Frequency"].Width = 100;
+            dgvTestData.Columns["Threshold"].Width = 100;
+            dgvTestData.Columns["Remove"].Width = 60;
+
+            // Add "Remove" button to each row
+            DataGridViewButtonColumn removeButtonColumn = new DataGridViewButtonColumn();
+            removeButtonColumn.HeaderText = "";
+            removeButtonColumn.Text = "✖";
+            removeButtonColumn.UseColumnTextForButtonValue = true;
+            removeButtonColumn.Width = 40;
+            dgvTestData.Columns.RemoveAt(3); // Remove placeholder column
+            dgvTestData.Columns.Add(removeButtonColumn);
+
+            // Handle button click
+            dgvTestData.CellContentClick += (sender, e) =>
+            {
+                if (e.RowIndex >= 0 && e.ColumnIndex == 3) // Remove button column
+                {
+                    dgvTestData.Rows.RemoveAt(e.RowIndex);
+
+                    // Enable test type selection again if all data points are removed
+                    if (dgvTestData.Rows.Count == 0)
+                    {
+                        cmbTestType.Enabled = true;
+                    }
+                }
+            };
+        }
+        #endregion
+
+        #region Event Handlers
+        private void DtpAppointmentDate_ValueChanged(object sender, EventArgs e)
+        {
+            LoadAppointmentsForDate(dtpAppointmentDate.Value.Date);
+        }
+
+        private void BtnRefreshAppointments_Click(object sender, EventArgs e)
+        {
+            LoadAppointmentsForDate(dtpAppointmentDate.Value.Date);
+        }
+
+        private void CmbAppointments_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbAppointments.SelectedItem != null && cmbAppointments.Enabled)
+            {
+                var selectedItem = cmbAppointments.SelectedItem;
+
+                // Check if it's our special "no appointments" item
+                if (selectedItem.GetType().GetProperty("IsEmpty") != null)
+                {
+                    return;
+                }
+
+                dynamic appointmentItem = selectedItem;
+                var appointment = appointmentItem.Appointment;
+
+                // Set the selected appointment and patient
+                selectedAppointmentId = appointment.AppointmentID;
+                selectedPatientId = appointment.PatientID;
+
+                // Find and display the patient info
+                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == appointment.PatientID);
+                if (patient != null)
+                {
+                    DisplayPatientInfo(patient);
+                    LoadPatientTestHistory(patient.PatientID);
+
+                    // Update appointment info
+                    lblAppointmentInfo.Text = $"Appointment: {appointment.Date.ToShortDateString()} at {appointment.Date.ToShortTimeString()} - {appointment.PurposeOfVisit}";
+                }
+            }
+        }
+        private void CmbPatients_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbPatients.SelectedItem != null && cmbPatients.SelectedIndex >= 0)
+            {
+                // Clear appointment selection to avoid conflicts
+                cmbAppointments.SelectedIndex = -1;
+                selectedAppointmentId = null;
+
+                dynamic selectedItem = cmbPatients.SelectedItem;
+                Models.Patient patient = selectedItem.Patient;
+
+                selectedPatientId = patient.PatientID;
+                DisplayPatientInfo(patient);
+                LoadPatientTestHistory(patient.PatientID);
+
+                // Find most recent confirmed appointment for this patient
+                var appointment = StaticDataProvider.Appointments
+                    .Where(a => a.PatientID == patient.PatientID && a.Status == "Confirmed")
+                    .OrderByDescending(a => a.Date)
+                    .FirstOrDefault();
+
+                if (appointment != null)
+                {
+                    selectedAppointmentId = appointment.AppointmentID;
+                    lblAppointmentInfo.Text = $"Last Confirmed Appointment: {appointment.Date.ToShortDateString()} - {appointment.PurposeOfVisit}";
+                }
+                else
+                {
+                    lblAppointmentInfo.Text = "No confirmed appointments found.";
+                }
+            }
+        }
+
+        private void BtnAddDataPoint_Click(object sender, EventArgs e)
+        {
+            // Validate patient selection
+            if (selectedPatientId == null)
+            {
+                //UIService.ShowWarning("Please select a patient first.");
+                return;
+            }
+
+            string ear = cmbEar.SelectedItem.ToString();
+            int frequency = (int)nudFrequency.Value;
+            int threshold = (int)nudThreshold.Value;
+
+            // Add to the data grid
+            dgvTestData.Rows.Add(ear, frequency, threshold);
+
+            // Lock test type once data is added
+            cmbTestType.Enabled = false;
+        }
+
+        private void BtnClearData_Click(object sender, EventArgs e)
+        {
+            // Clear the data grid
+            dgvTestData.Rows.Clear();
+
+            // Unlock test type when all data is cleared
+            cmbTestType.Enabled = true;
+        }
+
+        private void BtnSaveTest_Click(object sender, EventArgs e)
+        {
+            // Validate data
+            if (selectedPatientId == null)
+            {
+                //UIService.ShowWarning("Please select a patient or appointment first.");
+                return;
+            }
+
+            if (dgvTestData.Rows.Count == 0)
+            {
+                //UIService.ShowWarning("Please add at least one data point to save the test.");
+                return;
+            }
+
+            if (rtbNotes.Text == "" || rtbNotes.Text.StartsWith("Enter patient's chief complaints"))
+            {
+                //UIService.ShowWarning("Please enter the patient's chief complaints.");
+                return;
+            }
+
+            try
+            {
+                // Get the current audiologist
+                var currentUser = AuthService.CurrentUser;
+                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.UserID == currentUser.UserID);
+
+                if (audiologist == null)
+                {
+                    UIService.ShowError("Could not identify the current audiologist.");
+                    return;
+                }
+
+                // Create medical record
+                int newRecordId = StaticDataProvider.MedicalRecords.Count > 0 ?
+                    StaticDataProvider.MedicalRecords.Max(r => r.RecordID) + 1 : 1;
+
+                var medicalRecord = new MedicalRecord
+                {
+                    RecordID = newRecordId,
+                    PatientID = selectedPatientId.Value,
+                    AppointmentID = selectedAppointmentId ?? 0,
+                    CreatedBy = audiologist.AudiologistID,
+                    ChiefComplaint = rtbNotes.Text, // Save chief complaints from rich text box
+                    Diagnosis = GetDiagnosisFromResults(),
+                    TreatmentPlan = "", // Leave clinical notes empty - will be updated in another form
+                    RecordDate = DateTime.Now
+                };
+
+                // Create hearing test
+                int newTestId = StaticDataProvider.HearingTests.Count > 0 ?
+                    StaticDataProvider.HearingTests.Max(t => t.TestID) + 1 : 1;
+
+                var hearingTest = new HearingTest
+                {
+                    TestID = newTestId,
+                    RecordID = newRecordId,
+                    TestType = cmbTestType.SelectedItem.ToString(),
+                    TestDate = DateTime.Now,
+                    TestNotes = "" // Empty - will be updated in another form
+                };
+
+                // Create audiogram data points
+                var audiogramDataList = new List<AudiogramData>();
+                int newAudiogramDataId = StaticDataProvider.AudiogramData.Count > 0 ?
+                    StaticDataProvider.AudiogramData.Max(a => a.AudiogramDataID) + 1 : 1;
+
+                foreach (DataGridViewRow row in dgvTestData.Rows)
+                {
+                    string ear = row.Cells["Ear"].Value.ToString();
+                    int frequency = Convert.ToInt32(row.Cells["Frequency"].Value);
+                    int threshold = Convert.ToInt32(row.Cells["Threshold"].Value);
+
+                    audiogramDataList.Add(new AudiogramData
+                    {
+                        AudiogramDataID = newAudiogramDataId++,
+                        TestID = newTestId,
+                        Ear = ear,
+                        Frequency = frequency,
+                        Threshold = threshold
+                    });
+                }
+
+                // Save to data store
+                StaticDataProvider.MedicalRecords.Add(medicalRecord);
+                StaticDataProvider.HearingTests.Add(hearingTest);
+                StaticDataProvider.AudiogramData.AddRange(audiogramDataList);
+
+                // IMPORTANT: We do NOT change the appointment status - it stays as "Confirmed"
+                // This allows multiple hearing tests for the same appointment if needed
+
+                UIService.ShowSuccess("Hearing test saved successfully.");
+
+                // Refresh the patient's test history
+                LoadPatientTestHistory(selectedPatientId.Value);
+
+                // Reset form data
+                BtnClearData_Click(sender, e);
+                rtbNotes.Text = "Enter patient's chief complaints here...";
+
+                // Refresh the appointments list
+                LoadAppointmentsForDate(dtpAppointmentDate.Value.Date);
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error saving hearing test: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region Helper Methods
+        private void LoadAppointmentsForDate(DateTime date)
+        {
+            // Clear and reset the appointments dropdown
+            cmbAppointments.DataSource = null;
+            cmbAppointments.Items.Clear();
+
+            // Get current audiologist
+            var currentUser = AuthService.CurrentUser;
+            var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.UserID == currentUser.UserID);
+
+            if (audiologist == null)
+            {
+                UIService.ShowError("Could not identify the current audiologist.");
+                return;
+            }
+
+            // Get only confirmed appointments for the selected date assigned to current audiologist
+            var appointments = StaticDataProvider.Appointments
+                .Where(a => a.Date.Date == date.Date &&
+                           a.AudiologistID == audiologist.AudiologistID &&
+                           a.Status == "Confirmed") // Only confirmed appointments, not completed
+                .OrderBy(a => a.Date.TimeOfDay)
+                .ToList();
+
+            if (appointments.Count == 0)
+            {
+                // Add a dummy item to indicate no appointments
+                var noAppointmentsItem = new
+                {
+                    DisplayName = "No confirmed appointments for this date",
+                    IsEmpty = true
+                };
+                cmbAppointments.Items.Add(noAppointmentsItem);
+                cmbAppointments.DisplayMember = "DisplayName";
+                cmbAppointments.Enabled = false;
+                cmbAppointments.SelectedIndex = 0;
+                return;
+            }
+
+            // Create appointment items with formatted display names
+            var appointmentItems = appointments.Select(a =>
+            {
+                // Find patient
+                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == a.PatientID);
+                string patientName = patient != null && patient.User != null
+                    ? $"{patient.User.FirstName} {patient.User.LastName}"
+                    : "Unknown Patient";
+
+                return new
+                {
+                    Appointment = a,
+                    DisplayName = $"{a.Date.ToShortTimeString()} - {patientName} - {a.PurposeOfVisit}"
+                };
+            }).ToList();
+
+            // Set up combobox
+            cmbAppointments.DisplayMember = "DisplayName";
+            cmbAppointments.ValueMember = "Appointment";
+            cmbAppointments.DataSource = appointmentItems;
+            cmbAppointments.Enabled = true;
+
+            // If we have appointments, select the first one by default
+            if (cmbAppointments.Items.Count > 0)
+            {
+                cmbAppointments.SelectedIndex = 0;
+            }
+        }
+
+        private void LoadPatientData()
+        {
+            // Get all patients for the direct patient selection dropdown
+            var patients = StaticDataProvider.Patients.ToList();
+
+            // Clear the combobox
+            cmbPatients.DataSource = null;
+            cmbPatients.Items.Clear();
+
+            // Create a custom class for displaying patient names correctly
+            var patientDisplayList = patients.Select(p => new
+            {
+                Patient = p,
+                DisplayName = $"{p.User.FirstName} {p.User.LastName}"
+            }).OrderBy(p => p.DisplayName).ToList();
+
+            // Set the data source and display configuration
+            cmbPatients.DisplayMember = "DisplayName";
+            cmbPatients.ValueMember = "Patient";
+            cmbPatients.DataSource = patientDisplayList;
+
+            // Don't select any patient by default
+            cmbPatients.SelectedIndex = -1;
+
+            // Select the specified patient if provided
+            if (selectedPatientId.HasValue && cmbPatients.Items.Count > 0)
+            {
+                for (int i = 0; i < cmbPatients.Items.Count; i++)
+                {
+                    dynamic item = cmbPatients.Items[i];
+                    if (item.Patient.PatientID == selectedPatientId.Value)
+                    {
+                        cmbPatients.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void DisplayPatientInfo(Models.Patient patient)
+        {
+            if (patient == null || patient.User == null)
+            {
+                lblPatientInfo.Text = "No patient selected";
+                return;
+            }
+
+            // Calculate age
+            int age = DateTime.Now.Year - patient.DateOfBirth.Year;
+            if (DateTime.Now.DayOfYear < patient.DateOfBirth.DayOfYear)
+                age--;
+
+            // Format patient info - simplified to just name and age
+            lblPatientInfo.Text = $"Patient: {patient.User.FirstName} {patient.User.LastName}, Age: {age}";
+        }
+
+        private void LoadPatientTestHistory(int patientId)
+        {
+            // Clear existing data
+            dgvTestHistory.Rows.Clear();
+
+            // Find medical records for this patient
+            var medicalRecords = StaticDataProvider.MedicalRecords
+                .Where(r => r.PatientID == patientId)
+                .OrderByDescending(r => r.RecordDate)
+                .ToList();
+
+            bool hasHistory = false;
+
+            foreach (var record in medicalRecords)
+            {
+                // Find hearing tests associated with this medical record
+                var tests = StaticDataProvider.HearingTests
+                    .Where(t => t.RecordID == record.RecordID)
+                    .ToList();
+
+                foreach (var test in tests)
+                {
+                    dgvTestHistory.Rows.Add(
+                        test.TestDate.ToShortDateString(),
+                        test.TestType,
+                        record.Diagnosis
+                    );
+
+                    hasHistory = true;
+                }
+            }
+
+            // Show/hide the "no history" message
+            var containingPanel = dgvTestHistory.Parent;
+            foreach (Control ctrl in containingPanel.Controls)
+            {
+                if (ctrl is Label label && label.Tag?.ToString() == "NoHistoryMessage")
+                {
+                    label.Visible = !hasHistory;
+                    break;
+                }
+            }
+
+            // Set visibility of the test history grid
+            dgvTestHistory.Visible = hasHistory;
+        }
+
+        private string GetDiagnosisFromResults()
+        {
+            // Simple algorithm to determine diagnosis based on thresholds
+            int rightEarCount = 0;
+            int leftEarCount = 0;
+            double rightEarAvg = 0;
+            double leftEarAvg = 0;
+
+            foreach (DataGridViewRow row in dgvTestData.Rows)
+            {
+                string ear = row.Cells["Ear"].Value.ToString();
+                int threshold = Convert.ToInt32(row.Cells["Threshold"].Value);
+
+                if (ear == "Right")
+                {
+                    rightEarAvg += threshold;
+                    rightEarCount++;
+                }
+                else if (ear == "Left")
+                {
+                    leftEarAvg += threshold;
+                    leftEarCount++;
+                }
+            }
+
+            // Calculate average thresholds
+            if (rightEarCount > 0) rightEarAvg /= rightEarCount;
+            if (leftEarCount > 0) leftEarAvg /= leftEarCount;
+
+            // Determine hearing loss severity
+            string rightEarDiagnosis = GetHearingLossSeverity(rightEarAvg);
+            string leftEarDiagnosis = GetHearingLossSeverity(leftEarAvg);
+
+            return $"Right ear: {rightEarDiagnosis}. Left ear: {leftEarDiagnosis}.";
+        }
+
+        private string GetHearingLossSeverity(double avgThreshold)
+        {
+            if (avgThreshold < 20) return "Normal hearing";
+            if (avgThreshold < 40) return "Mild hearing loss";
+            if (avgThreshold < 60) return "Moderate hearing loss";
+            if (avgThreshold < 80) return "Severe hearing loss";
+            return "Profound hearing loss";
+        }
+        #endregion
+    }
+}

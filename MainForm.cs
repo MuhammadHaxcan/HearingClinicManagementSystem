@@ -205,7 +205,7 @@ namespace HearingClinicManagementSystem
         private void AddAudiologistMenuItems()
         {
             // Future audiologist menu items will be added here
-            AddSidebarButton("View Appointments", null);
+            AddSidebarButton("Hearing Test", () => OpenForm(new UI.Audiologist.HearingTestForm()));
         }
 
         private void AddInventoryManagerMenuItems()

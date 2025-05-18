@@ -362,7 +362,7 @@ namespace HearingClinicManagementSystem.UI.Forms
             // 
             // DashboardForm
             // 
-            this.ClientSize = new System.Drawing.Size(1212, 785);
+            this.ClientSize = new System.Drawing.Size(1344, 785);
             this.Name = "DashboardForm";
             this.ResumeLayout(false);
 
