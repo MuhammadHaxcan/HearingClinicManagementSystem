@@ -206,12 +206,17 @@ namespace HearingClinicManagementSystem
         {
             // Future audiologist menu items will be added here
             AddSidebarButton("Hearing Test", () => OpenForm(new UI.Audiologist.HearingTestForm()));
+            AddSidebarButton("View Test Results", () => OpenForm(new UI.Audiologist.AudiogramViewForm()));
+            AddSidebarButton("Complete Appointment", () => OpenForm(new UI.Audiologist.CompleteAppointmentForm()));
+
         }
 
         private void AddInventoryManagerMenuItems()
         {
             // Future inventory manager menu items will be added here
+            AddSidebarButton("Update Inventory", () => OpenForm(new UI.ClinicManager.ProductManagementForm()));
             AddSidebarButton("Manage Inventory", null);
+
         }
 
         private void AddClinicManagerMenuItems()

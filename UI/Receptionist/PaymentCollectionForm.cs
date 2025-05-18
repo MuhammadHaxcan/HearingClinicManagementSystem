@@ -20,7 +20,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private DataGridView dgvInvoices;
         private Panel pnlInvoiceOptions;
         private Panel pnlInvoiceDetails;
-        private Label lblSelectedAppointment;
+        //private Label lblSelectedAppointment;
         private Label lblTotalFee;
         private Label lblPaidAmount;
         private Label lblRemainingAmount;
@@ -324,7 +324,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             // Add all sections to options card
             optionsCard.Controls.Add(newInvoicePanel);
             optionsCard.Controls.Add(summaryPanel);
-            optionsCard.Controls.Add(lblSelectedAppointment);
+            //optionsCard.Controls.Add(lblSelectedAppointment);
 
             // Add card to panel
             pnlInvoiceOptions.Controls.Add(optionsCard);
@@ -726,7 +726,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private void ClearDetails()
         {
             selectedAppointmentId = -1;
-            lblSelectedAppointment.Text = "No appointment selected";
+            //lblSelectedAppointment.Text = "No appointment selected";
             lblTotalFee.Text = "$0.00";
             lblPaidAmount.Text = "$0.00";
             lblRemainingAmount.Text = "$0.00";
