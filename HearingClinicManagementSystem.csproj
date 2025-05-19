@@ -93,6 +93,9 @@
     <Compile Include="UI\Audiologist\HearingTestForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="UI\ClinicManager\OrderManagementForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="UI\ClinicManager\ProductManagementForm.cs">
       <SubType>Form</SubType>
     </Compile>

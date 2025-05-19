@@ -35,9 +35,14 @@ namespace HearingClinicManagementSystem.Services
             MessageBox.Show(message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        internal static DialogResult ShowQuestion(string v)
+        internal static DialogResult ShowQuestion(string message)
         {
-            throw new NotImplementedException();
+            return MessageBox.Show(
+                message,
+                "Confirmation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
         }
 
         internal static void ShowWarning(string message)

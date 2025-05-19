@@ -215,7 +215,7 @@ namespace HearingClinicManagementSystem
         {
             // Future inventory manager menu items will be added here
             AddSidebarButton("Update Inventory", () => OpenForm(new UI.ClinicManager.ProductManagementForm()));
-            AddSidebarButton("Manage Inventory", null);
+            AddSidebarButton("Order Management", () => OpenForm(new UI.ClinicManager.OrderManagementForm()));
 
         }
 
