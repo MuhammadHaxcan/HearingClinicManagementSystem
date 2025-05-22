@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -20,7 +19,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private DataGridView dgvInvoices;
         private Panel pnlInvoiceOptions;
         private Panel pnlInvoiceDetails;
-        //private Label lblSelectedAppointment;
         private Label lblTotalFee;
         private Label lblPaidAmount;
         private Label lblRemainingAmount;
@@ -30,12 +28,28 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private Button btnRefresh;
         private TableLayoutPanel mainLayout;
         private int selectedAppointmentId = -1;
+
+        private TabControl tabPaymentCollection;
+        private DataGridView dgvConfirmedOrders;
+        private DataGridView dgvOrderInvoices;
+        private Panel pnlOrderPaymentOptions;
+        private Panel pnlOrderInvoiceDetails;
+        private Label lblOrderTotal;
+        private Label lblOrderPaid;
+        private Label lblOrderRemaining;
+        private NumericUpDown nudOrderPaymentAmount;
+        private ComboBox cmbOrderPaymentMethod;
+        private Button btnCreateOrderInvoice;
+        private Button btnRefreshOrders;
+        private TableLayoutPanel orderLayout;
+        private int selectedOrderId = -1;
         #endregion
 
         public PaymentCollectionForm()
         {
             InitializeComponents();
             LoadCompletedAppointments();
+            LoadConfirmedOrders();
         }
 
         #region UI Setup
@@ -47,6 +61,30 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             var lblTitle = CreateTitleLabel("Payment Collection");
             lblTitle.Dock = DockStyle.Top;
 
+            // Create tab control
+            tabPaymentCollection = new TabControl
+            {
+                Dock = DockStyle.Fill,
+                Font = new Font(this.Font.FontFamily, 10, FontStyle.Regular)
+            };
+
+            // Create appointment payments tab
+            TabPage tabAppointments = new TabPage("Appointment Payments");
+            InitializeAppointmentTab(tabAppointments);
+            tabPaymentCollection.TabPages.Add(tabAppointments);
+
+            // Create product orders tab
+            TabPage tabOrders = new TabPage("Order Payments");
+            InitializeOrderTab(tabOrders);
+            tabPaymentCollection.TabPages.Add(tabOrders);
+
+            // Add tab control to form
+            Controls.Add(tabPaymentCollection);
+            Controls.Add(lblTitle);
+        }
+
+        private void InitializeAppointmentTab(TabPage tabPage)
+        {
             // Main layout with 2 rows and 2 columns
             mainLayout = new TableLayoutPanel
             {
@@ -68,8 +106,33 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             InitializeInvoiceOptionsPanel();
             InitializeInvoicesPanel();
 
-            Controls.Add(mainLayout);
-            Controls.Add(lblTitle);
+            tabPage.Controls.Add(mainLayout);
+        }
+
+        private void InitializeOrderTab(TabPage tabPage)
+        {
+            // Main layout with 2 rows and 2 columns
+            orderLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Set column and row styles
+            orderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F));
+            orderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+            orderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
+            orderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
+
+            // Create and add all panels
+            InitializeOrdersPanel();
+            InitializeOrderPaymentOptionsPanel();
+            InitializeOrderInvoicesPanel();
+
+            tabPage.Controls.Add(orderLayout);
         }
 
         private void InitializeAppointmentsPanel()
@@ -324,7 +387,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             // Add all sections to options card
             optionsCard.Controls.Add(newInvoicePanel);
             optionsCard.Controls.Add(summaryPanel);
-            //optionsCard.Controls.Add(lblSelectedAppointment);
 
             // Add card to panel
             pnlInvoiceOptions.Controls.Add(optionsCard);
@@ -408,6 +470,342 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             // Add panel to main layout - spans 2 columns in second row
             mainLayout.Controls.Add(pnlInvoiceDetails, 0, 1);
             mainLayout.SetColumnSpan(pnlInvoiceDetails, 2);
+        }
+
+        private void InitializeOrdersPanel()
+        {
+            // Create panel for confirmed orders
+            Panel pnlConfirmedOrders = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Create header with label and refresh button
+            Panel headerPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 40,
+                BackColor = Color.White
+            };
+
+            var lblOrders = CreateLabel("Confirmed Orders", 5, 10);
+            lblOrders.Font = new Font(lblOrders.Font.FontFamily, 12, FontStyle.Bold);
+            lblOrders.AutoSize = true;
+
+            btnRefreshOrders = CreateButton("Refresh", headerPanel.Width - 120, 5, BtnRefreshOrders_Click, 100, 30);
+            ApplyButtonStyle(btnRefreshOrders, Color.FromArgb(0, 123, 255));
+            btnRefreshOrders.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+            headerPanel.Controls.Add(lblOrders);
+            headerPanel.Controls.Add(btnRefreshOrders);
+
+            // Create orders grid
+            dgvConfirmedOrders = CreateDataGrid(0, false, true);
+            dgvConfirmedOrders.Dock = DockStyle.Fill;
+            dgvConfirmedOrders.MultiSelect = false;
+            dgvConfirmedOrders.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvConfirmedOrders.BorderStyle = BorderStyle.None;
+            dgvConfirmedOrders.BackgroundColor = Color.White;
+            dgvConfirmedOrders.CellFormatting += DgvConfirmedOrders_CellFormatting;
+            dgvConfirmedOrders.SelectionChanged += DgvConfirmedOrders_SelectionChanged;
+            dgvConfirmedOrders.RowHeadersVisible = false;
+            dgvConfirmedOrders.AllowUserToAddRows = false;
+            dgvConfirmedOrders.AllowUserToDeleteRows = false;
+            dgvConfirmedOrders.AllowUserToResizeRows = false;
+            dgvConfirmedOrders.ReadOnly = true;
+
+            // Set up grid columns
+            dgvConfirmedOrders.Columns.Add("OrderID", "Order #");
+            dgvConfirmedOrders.Columns.Add("OrderDate", "Date");
+            dgvConfirmedOrders.Columns.Add("Patient", "Patient");
+            dgvConfirmedOrders.Columns.Add("TotalAmount", "Total");
+            dgvConfirmedOrders.Columns.Add("PaidAmount", "Paid");
+            dgvConfirmedOrders.Columns.Add("RemainingAmount", "Remaining");
+            dgvConfirmedOrders.Columns.Add("Status", "Status");
+            dgvConfirmedOrders.Columns.Add("ItemCount", "Items");
+
+            // Set column widths as percentages for better optimization
+            dgvConfirmedOrders.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvConfirmedOrders.Columns["OrderID"].FillWeight = 8;
+            dgvConfirmedOrders.Columns["OrderDate"].FillWeight = 12;
+            dgvConfirmedOrders.Columns["Patient"].FillWeight = 20;
+            dgvConfirmedOrders.Columns["TotalAmount"].FillWeight = 12;
+            dgvConfirmedOrders.Columns["PaidAmount"].FillWeight = 12;
+            dgvConfirmedOrders.Columns["RemainingAmount"].FillWeight = 12;
+            dgvConfirmedOrders.Columns["Status"].FillWeight = 12;
+            dgvConfirmedOrders.Columns["ItemCount"].FillWeight = 10;
+
+            // Style the grid header
+            dgvConfirmedOrders.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            dgvConfirmedOrders.ColumnHeadersDefaultCellStyle.Font = new Font(dgvConfirmedOrders.Font, FontStyle.Bold);
+            dgvConfirmedOrders.ColumnHeadersHeight = 35;
+            dgvConfirmedOrders.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+
+            // Add controls to panel
+            pnlConfirmedOrders.Controls.Add(dgvConfirmedOrders);
+            pnlConfirmedOrders.Controls.Add(headerPanel);
+
+            // Add panel to order layout
+            orderLayout.Controls.Add(pnlConfirmedOrders, 0, 0);
+        }
+
+        private void InitializeOrderPaymentOptionsPanel()
+        {
+            // Panel for order payment options
+            pnlOrderPaymentOptions = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Header label
+            var lblOptionsTitle = CreateLabel("Payment Options", 0, 5);
+            lblOptionsTitle.Font = new Font(lblOptionsTitle.Font.FontFamily, 12, FontStyle.Bold);
+            lblOptionsTitle.Dock = DockStyle.Top;
+            lblOptionsTitle.Height = 30;
+
+            // Create card-style panel for options
+            Panel optionsCard = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(15),
+                BackColor = Color.White,
+                BorderStyle = BorderStyle.None
+            };
+
+            // Create financial summary section
+            Panel summaryPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 80,
+                BackColor = Color.FromArgb(245, 247, 250),
+                Padding = new Padding(5),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            // Create title for summary section
+            Label lblSummaryTitle = CreateLabel("Order Summary", 5, 5);
+            lblSummaryTitle.Font = new Font(lblSummaryTitle.Font.FontFamily, 10, FontStyle.Bold);
+            lblSummaryTitle.AutoSize = true;
+            lblSummaryTitle.ForeColor = Color.FromArgb(60, 60, 60);
+
+            // Create layout for financial details
+            TableLayoutPanel summaryLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 50,
+                ColumnCount = 3,
+                RowCount = 2,
+                BackColor = Color.Transparent
+            };
+
+            // Set column styles
+            summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+            summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+            summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+
+            // Total amount
+            Label lblOrderTotalTitle = CreateLabel("Order Total:", 0, 0);
+            lblOrderTotalTitle.Dock = DockStyle.Fill;
+            lblOrderTotalTitle.TextAlign = ContentAlignment.BottomCenter;
+            lblOrderTotalTitle.Font = new Font(lblOrderTotalTitle.Font, FontStyle.Regular);
+
+            lblOrderTotal = CreateLabel("$0.00", 0, 0);
+            lblOrderTotal.Dock = DockStyle.Fill;
+            lblOrderTotal.TextAlign = ContentAlignment.TopCenter;
+            lblOrderTotal.Font = new Font(lblOrderTotal.Font.FontFamily, 12, FontStyle.Bold);
+
+            // Paid amount
+            Label lblOrderPaidTitle = CreateLabel("Amount Paid:", 0, 0);
+            lblOrderPaidTitle.Dock = DockStyle.Fill;
+            lblOrderPaidTitle.TextAlign = ContentAlignment.BottomCenter;
+            lblOrderPaidTitle.Font = new Font(lblOrderPaidTitle.Font, FontStyle.Regular);
+
+            lblOrderPaid = CreateLabel("$0.00", 0, 0);
+            lblOrderPaid.Dock = DockStyle.Fill;
+            lblOrderPaid.TextAlign = ContentAlignment.TopCenter;
+            lblOrderPaid.Font = new Font(lblOrderPaid.Font.FontFamily, 12, FontStyle.Bold);
+            lblOrderPaid.ForeColor = Color.Green;
+
+            // Remaining amount
+            Label lblOrderRemainingTitle = CreateLabel("Amount Remaining:", 0, 0);
+            lblOrderRemainingTitle.Dock = DockStyle.Fill;
+            lblOrderRemainingTitle.TextAlign = ContentAlignment.BottomCenter;
+            lblOrderRemainingTitle.Font = new Font(lblOrderRemainingTitle.Font, FontStyle.Regular);
+
+            lblOrderRemaining = CreateLabel("$0.00", 0, 0);
+            lblOrderRemaining.Dock = DockStyle.Fill;
+            lblOrderRemaining.TextAlign = ContentAlignment.TopCenter;
+            lblOrderRemaining.Font = new Font(lblOrderRemaining.Font.FontFamily, 12, FontStyle.Bold);
+            lblOrderRemaining.ForeColor = Color.Red;
+
+            // Add labels to layout
+            summaryLayout.Controls.Add(lblOrderTotalTitle, 0, 0);
+            summaryLayout.Controls.Add(lblOrderTotal, 0, 1);
+            summaryLayout.Controls.Add(lblOrderPaidTitle, 1, 0);
+            summaryLayout.Controls.Add(lblOrderPaid, 1, 1);
+            summaryLayout.Controls.Add(lblOrderRemainingTitle, 2, 0);
+            summaryLayout.Controls.Add(lblOrderRemaining, 2, 1);
+
+            // Add controls to summary panel
+            summaryPanel.Controls.Add(summaryLayout);
+            summaryPanel.Controls.Add(lblSummaryTitle);
+
+            // Create new payment section
+            Panel newPaymentPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(0, 15, 0, 0)
+            };
+
+            TableLayoutPanel paymentInputsLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(0, 10, 0, 10)
+            };
+
+            paymentInputsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130F));
+            paymentInputsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+            // Payment amount
+            Label lblAmount = CreateLabel("Amount ($):", 0, 0);
+            lblAmount.Dock = DockStyle.Fill;
+            lblAmount.TextAlign = ContentAlignment.MiddleLeft;
+
+            nudOrderPaymentAmount = CreateNumericUpDown(0, 0, 0);
+            nudOrderPaymentAmount.Dock = DockStyle.Fill;
+            nudOrderPaymentAmount.Minimum = 0;
+            nudOrderPaymentAmount.Maximum = 10000;
+            nudOrderPaymentAmount.DecimalPlaces = 2;
+            nudOrderPaymentAmount.Increment = 10M;
+            nudOrderPaymentAmount.Value = 0;
+            nudOrderPaymentAmount.Enabled = false;
+            nudOrderPaymentAmount.ValueChanged += NudOrderPaymentAmount_ValueChanged;
+
+            // Payment method
+            Label lblMethod = CreateLabel("Payment Method:", 0, 0);
+            lblMethod.Dock = DockStyle.Fill;
+            lblMethod.TextAlign = ContentAlignment.MiddleLeft;
+
+            cmbOrderPaymentMethod = CreateComboBox(0, 0, 0);
+            cmbOrderPaymentMethod.Dock = DockStyle.Fill;
+            cmbOrderPaymentMethod.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbOrderPaymentMethod.Items.AddRange(new object[] { "Cash", "Credit Card", "Debit Card" });
+            cmbOrderPaymentMethod.SelectedIndex = 0;
+            cmbOrderPaymentMethod.Enabled = false;
+
+            // Add inputs to layout
+            paymentInputsLayout.Controls.Add(lblAmount, 0, 0);
+            paymentInputsLayout.Controls.Add(nudOrderPaymentAmount, 1, 0);
+            paymentInputsLayout.Controls.Add(lblMethod, 0, 1);
+            paymentInputsLayout.Controls.Add(cmbOrderPaymentMethod, 1, 1);
+
+            // Create payment button
+            btnCreateOrderInvoice = CreateButton("Process Payment", 0, 0, BtnCreateOrderInvoice_Click, 150, 40);
+            btnCreateOrderInvoice.Anchor = AnchorStyles.Right;
+            ApplyButtonStyle(btnCreateOrderInvoice, Color.FromArgb(40, 167, 69));
+            btnCreateOrderInvoice.Margin = new Padding(3, 15, 3, 3);
+            btnCreateOrderInvoice.Enabled = false;
+
+            // Add button to the last row
+            paymentInputsLayout.Controls.Add(btnCreateOrderInvoice, 1, 2);
+
+            // Add controls to new payment panel
+            newPaymentPanel.Controls.Add(paymentInputsLayout);
+
+            // Add all sections to options card
+            optionsCard.Controls.Add(newPaymentPanel);
+            optionsCard.Controls.Add(summaryPanel);
+
+            // Add card to panel
+            pnlOrderPaymentOptions.Controls.Add(optionsCard);
+            pnlOrderPaymentOptions.Controls.Add(lblOptionsTitle);
+
+            // Add panel to order layout
+            orderLayout.Controls.Add(pnlOrderPaymentOptions, 1, 0);
+        }
+
+        private void InitializeOrderInvoicesPanel()
+        {
+            // Panel for order invoices
+            pnlOrderInvoiceDetails = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                Padding = new Padding(10),
+                BackColor = Color.White
+            };
+
+            // Header label
+            var lblInvoicesTitle = CreateLabel("Order Payment History", 0, 5);
+            lblInvoicesTitle.Font = new Font(lblInvoicesTitle.Font.FontFamily, 12, FontStyle.Bold);
+            lblInvoicesTitle.Dock = DockStyle.Top;
+            lblInvoicesTitle.Height = 30;
+
+            // Create order invoices grid
+            dgvOrderInvoices = CreateDataGrid(0, false, true);
+            dgvOrderInvoices.Dock = DockStyle.Fill;
+            dgvOrderInvoices.MultiSelect = false;
+            dgvOrderInvoices.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvOrderInvoices.BorderStyle = BorderStyle.None;
+            dgvOrderInvoices.BackgroundColor = Color.White;
+            dgvOrderInvoices.RowHeadersVisible = false;
+            dgvOrderInvoices.AllowUserToAddRows = false;
+            dgvOrderInvoices.AllowUserToDeleteRows = false;
+            dgvOrderInvoices.AllowUserToResizeRows = false;
+            dgvOrderInvoices.ReadOnly = true;
+
+            // Set up grid columns
+            dgvOrderInvoices.Columns.Add("InvoiceID", "Invoice #");
+            dgvOrderInvoices.Columns.Add("Date", "Date");
+            dgvOrderInvoices.Columns.Add("Amount", "Amount");
+            dgvOrderInvoices.Columns.Add("Method", "Payment Method");
+            dgvOrderInvoices.Columns.Add("Status", "Status");
+            dgvOrderInvoices.Columns.Add("CreatedBy", "Created By");
+
+            // Set column widths as percentages for better optimization
+            dgvOrderInvoices.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvOrderInvoices.Columns["InvoiceID"].FillWeight = 10;
+            dgvOrderInvoices.Columns["Date"].FillWeight = 15;
+            dgvOrderInvoices.Columns["Amount"].FillWeight = 15;
+            dgvOrderInvoices.Columns["Method"].FillWeight = 20;
+            dgvOrderInvoices.Columns["Status"].FillWeight = 10;
+            dgvOrderInvoices.Columns["CreatedBy"].FillWeight = 30;
+
+            // Style the grid header
+            dgvOrderInvoices.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            dgvOrderInvoices.ColumnHeadersDefaultCellStyle.Font = new Font(dgvOrderInvoices.Font, FontStyle.Bold);
+            dgvOrderInvoices.ColumnHeadersHeight = 35;
+            dgvOrderInvoices.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+            dgvOrderInvoices.CellFormatting += DgvOrderInvoices_CellFormatting;
+
+            // Add no invoices message label
+            Label lblNoOrderInvoices = new Label
+            {
+                Text = "No payment history found for this order",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(this.Font.FontFamily, 10, FontStyle.Italic),
+                ForeColor = Color.Gray,
+                Visible = false,
+                Tag = "NoOrderInvoicesMessage"
+            };
+
+            // Add controls to panel
+            pnlOrderInvoiceDetails.Controls.Add(dgvOrderInvoices);
+            pnlOrderInvoiceDetails.Controls.Add(lblNoOrderInvoices);
+            pnlOrderInvoiceDetails.Controls.Add(lblInvoicesTitle);
+
+            // Add panel to order layout - spans 2 columns in second row
+            orderLayout.Controls.Add(pnlOrderInvoiceDetails, 0, 1);
+            orderLayout.SetColumnSpan(pnlOrderInvoiceDetails, 2);
         }
 
         private void ApplyButtonStyle(Button button, Color baseColor)
@@ -534,6 +932,110 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 }
             }
         }
+
+        private void DgvConfirmedOrders_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex >= 0)
+            {
+                DataGridViewRow row = dgvConfirmedOrders.Rows[e.RowIndex];
+                string status = row.Cells["Status"].Value?.ToString();
+
+                // Format status cell
+                if (e.ColumnIndex == dgvConfirmedOrders.Columns["Status"].Index)
+                {
+                    if (status == "Paid" || status == "Completed")
+                    {
+                        e.CellStyle.ForeColor = Color.Green;
+                        e.CellStyle.Font = new Font(dgvConfirmedOrders.Font, FontStyle.Bold);
+                    }
+                    else if (status == "Partially Paid")
+                    {
+                        e.CellStyle.ForeColor = Color.Orange;
+                        e.CellStyle.Font = new Font(dgvConfirmedOrders.Font, FontStyle.Bold);
+                    }
+                    else // Confirmed status
+                    {
+                        e.CellStyle.ForeColor = Color.Blue;
+                    }
+                }
+
+                // Format currency columns
+                if (e.ColumnIndex == dgvConfirmedOrders.Columns["TotalAmount"].Index ||
+                    e.ColumnIndex == dgvConfirmedOrders.Columns["PaidAmount"].Index ||
+                    e.ColumnIndex == dgvConfirmedOrders.Columns["RemainingAmount"].Index)
+                {
+                    if (e.Value != null && decimal.TryParse(e.Value.ToString().Replace("$", "").Replace(",", ""), out decimal amount))
+                    {
+                        e.Value = amount.ToString("C", CultureInfo.CurrentCulture);
+                        e.FormattingApplied = true;
+
+                        if (e.ColumnIndex == dgvConfirmedOrders.Columns["PaidAmount"].Index && amount > 0)
+                        {
+                            e.CellStyle.ForeColor = Color.Green;
+                        }
+                        else if (e.ColumnIndex == dgvConfirmedOrders.Columns["RemainingAmount"].Index && amount > 0)
+                        {
+                            e.CellStyle.ForeColor = Color.Red;
+                        }
+                    }
+                }
+
+                // Alternate row coloring for better readability
+                if (e.RowIndex % 2 == 0)
+                {
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
+                }
+                else
+                {
+                    row.DefaultCellStyle.BackColor = Color.White;
+                }
+            }
+        }
+
+        private void DgvOrderInvoices_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex >= 0)
+            {
+                DataGridViewRow row = dgvOrderInvoices.Rows[e.RowIndex];
+
+                // Format status cell
+                if (e.ColumnIndex == dgvOrderInvoices.Columns["Status"].Index)
+                {
+                    string status = row.Cells["Status"].Value?.ToString();
+                    if (status == "Paid")
+                    {
+                        e.CellStyle.ForeColor = Color.Green;
+                        e.CellStyle.Font = new Font(dgvOrderInvoices.Font, FontStyle.Bold);
+                    }
+                    else if (status == "Pending")
+                    {
+                        e.CellStyle.ForeColor = Color.Orange;
+                    }
+                }
+
+                // Format amount column as currency
+                if (e.ColumnIndex == dgvOrderInvoices.Columns["Amount"].Index && e.Value != null)
+                {
+                    if (decimal.TryParse(e.Value.ToString().Replace("$", "").Replace(",", ""),
+                            out decimal amount))
+                    {
+                        e.Value = amount.ToString("C", CultureInfo.CurrentCulture);
+                        e.FormattingApplied = true;
+                    }
+                }
+
+                // Alternate row coloring for better readability
+                if (e.RowIndex % 2 == 0)
+                {
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
+                }
+                else
+                {
+                    row.DefaultCellStyle.BackColor = Color.White;
+                }
+            }
+        }
+
         private void DgvCompletedAppointments_SelectionChanged(object sender, EventArgs e)
         {
             if (dgvCompletedAppointments.SelectedRows.Count > 0)
@@ -549,7 +1051,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 string status = selectedRow.Cells["Status"].Value.ToString();
 
                 // Update UI - simplified to just show appointment number and financial summary
-                //lblSelectedAppointment.Text = $"Appointment #{selectedAppointmentId} - Patient: {patientName}";
                 lblTotalFee.Text = totalFee.ToString("C", CultureInfo.CurrentCulture);
                 lblPaidAmount.Text = paidAmount.ToString("C", CultureInfo.CurrentCulture);
                 lblRemainingAmount.Text = remainingAmount.ToString("C", CultureInfo.CurrentCulture);
@@ -584,6 +1085,57 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 ClearDetails();
             }
         }
+
+        private void DgvConfirmedOrders_SelectionChanged(object sender, EventArgs e)
+        {
+            if (dgvConfirmedOrders.SelectedRows.Count > 0)
+            {
+                DataGridViewRow selectedRow = dgvConfirmedOrders.SelectedRows[0];
+                selectedOrderId = Convert.ToInt32(selectedRow.Cells["OrderID"].Value);
+
+                // Parse values, handling currency formatting
+                string patientName = selectedRow.Cells["Patient"].Value.ToString();
+                decimal totalAmount = ParseCurrencyValue(selectedRow.Cells["TotalAmount"].Value.ToString());
+                decimal paidAmount = ParseCurrencyValue(selectedRow.Cells["PaidAmount"].Value.ToString());
+                decimal remainingAmount = ParseCurrencyValue(selectedRow.Cells["RemainingAmount"].Value.ToString());
+                string status = selectedRow.Cells["Status"].Value.ToString();
+
+                // Update UI
+                lblOrderTotal.Text = totalAmount.ToString("C", CultureInfo.CurrentCulture);
+                lblOrderPaid.Text = paidAmount.ToString("C", CultureInfo.CurrentCulture);
+                lblOrderRemaining.Text = remainingAmount.ToString("C", CultureInfo.CurrentCulture);
+
+                // Enable or disable payment controls based on remaining amount
+                bool canAddPayment = remainingAmount > 0 && status != "Completed";
+                nudOrderPaymentAmount.Enabled = canAddPayment;
+                cmbOrderPaymentMethod.Enabled = canAddPayment;
+                btnCreateOrderInvoice.Enabled = false; // Will be enabled when a valid amount is entered
+
+                if (canAddPayment)
+                {
+                    // Set maximum payment amount to remaining balance
+                    nudOrderPaymentAmount.Maximum = remainingAmount;
+
+                    // Suggest full remaining amount as default
+                    nudOrderPaymentAmount.Value = remainingAmount;
+                }
+                else
+                {
+                    // Reset payment amount for fully paid orders
+                    nudOrderPaymentAmount.Value = 0;
+                    nudOrderPaymentAmount.Maximum = 0;
+                }
+
+                // Load invoices for this order
+                LoadInvoicesForOrder(selectedOrderId);
+            }
+            else
+            {
+                // Clear the details
+                ClearOrderDetails();
+            }
+        }
+
         private void NudPaymentAmount_ValueChanged(object sender, EventArgs e)
         {
             // Enable the create invoice button only if there's a valid payment amount
@@ -598,6 +1150,23 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             else
             {
                 nudPaymentAmount.BackColor = Color.FromArgb(255, 240, 240); // Light red
+            }
+        }
+
+        private void NudOrderPaymentAmount_ValueChanged(object sender, EventArgs e)
+        {
+            // Enable the create invoice button only if there's a valid payment amount
+            bool isValidAmount = nudOrderPaymentAmount.Value > 0 && nudOrderPaymentAmount.Value <= nudOrderPaymentAmount.Maximum;
+            btnCreateOrderInvoice.Enabled = isValidAmount;
+
+            // Visual feedback
+            if (isValidAmount)
+            {
+                nudOrderPaymentAmount.BackColor = Color.FromArgb(240, 255, 240); // Light green
+            }
+            else
+            {
+                nudOrderPaymentAmount.BackColor = Color.FromArgb(255, 240, 240); // Light red
             }
         }
 
@@ -664,6 +1233,85 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
         }
 
+        private void BtnCreateOrderInvoice_Click(object sender, EventArgs e)
+        {
+            if (selectedOrderId <= 0 || nudOrderPaymentAmount.Value <= 0)
+            {
+                UIService.ShowError("Please select an order and enter a valid payment amount");
+                return;
+            }
+
+            try
+            {
+                // Create a new invoice for the order
+                int newInvoiceId = StaticDataProvider.Invoices.Count > 0 ?
+                    StaticDataProvider.Invoices.Max(i => i.InvoiceID) + 1 : 1;
+
+                var newInvoice = new Invoice
+                {
+                    InvoiceID = newInvoiceId,
+                    AppointmentID = null,
+                    OrderID = selectedOrderId,
+                    InvoiceDate = DateTime.Now,
+                    TotalAmount = nudOrderPaymentAmount.Value,
+                    Status = "Paid", // Mark as paid immediately since this is a direct payment
+                    PaymentMethod = cmbOrderPaymentMethod.SelectedItem.ToString()
+                };
+
+                // Add the invoice to the data store
+                StaticDataProvider.Invoices.Add(newInvoice);
+
+                // Create a payment record for this invoice
+                int newPaymentId = StaticDataProvider.Payments.Count > 0 ?
+                    StaticDataProvider.Payments.Max(p => p.PaymentID) + 1 : 1;
+
+                var newPayment = new Payment
+                {
+                    PaymentID = newPaymentId,
+                    InvoiceID = newInvoiceId,
+                    Amount = nudOrderPaymentAmount.Value,
+                    PaymentDate = DateTime.Now,
+                    ReceivedBy = AuthService.CurrentUser.UserID,
+                    PaymentMethod = cmbOrderPaymentMethod.SelectedItem.ToString()
+                };
+
+                // Add the payment to the data store
+                StaticDataProvider.Payments.Add(newPayment);
+
+                // Update order status if fully paid
+                var order = StaticDataProvider.Orders.FirstOrDefault(o => o.OrderID == selectedOrderId);
+                if (order != null)
+                {
+                    decimal totalPaid = CalculateTotalPaidAmountForOrder(selectedOrderId);
+                    
+                    if (totalPaid >= order.TotalAmount)
+                    {
+                        order.Status = "Completed"; // Mark as completed when fully paid
+                    }
+                    else if (totalPaid > 0)
+                    {
+                        order.Status = "Partially Paid";
+                    }
+                }
+
+                // Show success message
+                UIService.ShowSuccess($"Payment of {nudOrderPaymentAmount.Value:C} processed successfully.\nOrder invoice #{newInvoiceId} created.");
+
+                // Reset the payment amount
+                nudOrderPaymentAmount.Value = 0;
+
+                // Refresh the UI
+                LoadConfirmedOrders();
+
+                // Re-select the current order
+                SelectOrderById(selectedOrderId);
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error processing payment: {ex.Message}");
+            }
+        }
+
         private void BtnRefresh_Click(object sender, EventArgs e)
         {
             int previouslySelectedAppointmentId = selectedAppointmentId;
@@ -673,6 +1321,18 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             if (previouslySelectedAppointmentId > 0)
             {
                 SelectAppointmentById(previouslySelectedAppointmentId);
+            }
+        }
+
+        private void BtnRefreshOrders_Click(object sender, EventArgs e)
+        {
+            int previouslySelectedOrderId = selectedOrderId;
+            LoadConfirmedOrders();
+
+            // Re-select the previously selected order if it still exists
+            if (previouslySelectedOrderId > 0)
+            {
+                SelectOrderById(previouslySelectedOrderId);
             }
         }
         #endregion
@@ -723,10 +1383,52 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
         }
 
+        private void LoadConfirmedOrders()
+        {
+            dgvConfirmedOrders.Rows.Clear();
+
+            var confirmedOrders = StaticDataProvider.Orders
+                .Where(o => o.Status == "Confirmed" || o.Status == "Partially Paid" || o.Status == "Completed")
+                .OrderByDescending(o => o.OrderDate)
+                .ToList();
+
+            foreach (var order in confirmedOrders)
+            {
+                // Get related data
+                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == order.PatientID);
+                
+                // Calculate total paid amount from invoices
+                decimal totalPaid = CalculateTotalPaidAmountForOrder(order.OrderID);
+                decimal remainingAmount = order.TotalAmount - totalPaid;
+
+                // Determine payment status
+                string paymentStatus = order.Status;
+                if (remainingAmount <= 0 && paymentStatus != "Completed")
+                    paymentStatus = "Paid";
+
+                // Count order items
+                int itemCount = StaticDataProvider.OrderItems.Count(oi => oi.OrderID == order.OrderID);
+
+                // Add row to grid
+                if (patient?.User != null)
+                {
+                    dgvConfirmedOrders.Rows.Add(
+                        order.OrderID,
+                        order.OrderDate.ToShortDateString(),
+                        $"{patient.User.FirstName} {patient.User.LastName}",
+                        order.TotalAmount,
+                        totalPaid,
+                        remainingAmount,
+                        paymentStatus,
+                        itemCount
+                    );
+                }
+            }
+        }
+
         private void ClearDetails()
         {
             selectedAppointmentId = -1;
-            //lblSelectedAppointment.Text = "No appointment selected";
             lblTotalFee.Text = "$0.00";
             lblPaidAmount.Text = "$0.00";
             lblRemainingAmount.Text = "$0.00";
@@ -749,11 +1451,49 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 }
             }
         }
+
+        private void ClearOrderDetails()
+        {
+            selectedOrderId = -1;
+            lblOrderTotal.Text = "$0.00";
+            lblOrderPaid.Text = "$0.00";
+            lblOrderRemaining.Text = "$0.00";
+
+            // Disable payment controls
+            nudOrderPaymentAmount.Enabled = false;
+            cmbOrderPaymentMethod.Enabled = false;
+            btnCreateOrderInvoice.Enabled = false;
+
+            // Clear the invoices grid
+            dgvOrderInvoices.Rows.Clear();
+
+            // Show the "no invoices" message
+            foreach (Control ctrl in pnlOrderInvoiceDetails.Controls)
+            {
+                if (ctrl is Label label && label.Tag?.ToString() == "NoOrderInvoicesMessage")
+                {
+                    label.Visible = true;
+                    break;
+                }
+            }
+        }
+
         private decimal CalculateTotalPaidAmount(int appointmentId)
         {
             // Get all invoices for this appointment
             var invoices = StaticDataProvider.Invoices
                 .Where(i => i.AppointmentID == appointmentId && i.Status == "Paid")
+                .ToList();
+
+            // Sum up the total amount paid
+            return invoices.Sum(i => i.TotalAmount);
+        }
+
+        private decimal CalculateTotalPaidAmountForOrder(int orderId)
+        {
+            // Get all invoices for this order
+            var invoices = StaticDataProvider.Invoices
+                .Where(i => i.OrderID == orderId && i.Status == "Paid")
                 .ToList();
 
             // Sum up the total amount paid
@@ -809,6 +1549,55 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
         }
 
+        private void LoadInvoicesForOrder(int orderId)
+        {
+            dgvOrderInvoices.Rows.Clear();
+
+            var orderInvoices = StaticDataProvider.Invoices
+                .Where(i => i.OrderID == orderId)
+                .OrderByDescending(i => i.InvoiceDate)
+                .ToList();
+
+            bool hasInvoices = orderInvoices.Any();
+
+            // Show/hide the "no invoices" message
+            foreach (Control ctrl in pnlOrderInvoiceDetails.Controls)
+            {
+                if (ctrl is Label label && label.Tag?.ToString() == "NoOrderInvoicesMessage")
+                {
+                    label.Visible = !hasInvoices;
+                    break;
+                }
+            }
+
+            if (!hasInvoices) return;
+
+            foreach (var invoice in orderInvoices)
+            {
+                // Get user who created the invoice (from payment)
+                string createdBy = "Unknown";
+
+                var payment = StaticDataProvider.Payments.FirstOrDefault(p => p.InvoiceID == invoice.InvoiceID);
+                if (payment != null)
+                {
+                    var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == payment.ReceivedBy);
+                    if (user != null)
+                    {
+                        createdBy = $"{user.FirstName} {user.LastName}";
+                    }
+                }
+
+                dgvOrderInvoices.Rows.Add(
+                    invoice.InvoiceID,
+                    invoice.InvoiceDate.ToShortDateString(),
+                    invoice.TotalAmount,
+                    invoice.PaymentMethod ?? "-",
+                    invoice.Status,
+                    createdBy
+                );
+            }
+        }
+
         private void SelectAppointmentById(int appointmentId)
         {
             foreach (DataGridViewRow row in dgvCompletedAppointments.Rows)
@@ -823,6 +1612,20 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
         }
 
+        private void SelectOrderById(int orderId)
+        {
+            foreach (DataGridViewRow row in dgvConfirmedOrders.Rows)
+            {
+                if (Convert.ToInt32(row.Cells["OrderID"].Value) == orderId)
+                {
+                    dgvConfirmedOrders.ClearSelection();
+                    row.Selected = true;
+                    dgvConfirmedOrders.FirstDisplayedScrollingRowIndex = row.Index;
+                    break;
+                }
+            }
+        }
+
         private decimal ParseCurrencyValue(string value)
         {
             // Remove currency symbol and commas, then parse
@@ -832,4 +1635,4 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         }
         #endregion
     }
-} 
+}

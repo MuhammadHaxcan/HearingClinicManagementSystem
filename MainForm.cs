@@ -222,7 +222,8 @@ namespace HearingClinicManagementSystem
         private void AddClinicManagerMenuItems()
         {
             // Future clinic manager menu items will be added here
-            AddSidebarButton("View Reports", null);
+            AddSidebarButton("Inventory Reports", () => OpenForm(new UI.Admin.InventoryReportingForm()));
+            AddSidebarButton("Clinic Reports", () => OpenForm(new UI.Admin.ClinicStatisticsForm()));
         }
         #endregion
 

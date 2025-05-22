@@ -494,8 +494,6 @@ namespace HearingClinicManagementSystem.UI.Patient
                 .Where(oi => oi.OrderID == cartOrder.OrderID)
                 .Sum(oi => oi.Quantity * oi.UnitPrice);
 
-            // Update inventory
-            UpdateInventoryForCheckout(cartOrder);
 
             // Update order
             cartOrder.DeliveryAddress = txtDeliveryAddress.Text;
@@ -503,8 +501,6 @@ namespace HearingClinicManagementSystem.UI.Patient
             cartOrder.OrderDate = DateTime.Now;
             cartOrder.TotalAmount = total;
 
-            // Create invoice
-            CreateInvoiceForOrder(cartOrder, total);
 
             // Refresh UI
             LoadProducts();
@@ -533,18 +529,8 @@ namespace HearingClinicManagementSystem.UI.Patient
             var order = StaticDataProvider.Orders.FirstOrDefault(o => o.OrderID == orderId);
             if (order != null)
             {
-                // Restore inventory
-                RestoreInventoryForCancelledOrder(order);
-
                 // Update order status
                 order.Status = "Cancelled";
-
-                // Update any related invoice
-                var invoice = StaticDataProvider.Invoices.FirstOrDefault(i => i.OrderID == order.OrderID);
-                if (invoice != null)
-                {
-                    invoice.Status = "Cancelled";
-                }
 
                 // Refresh UI
                 LoadProducts();
@@ -725,63 +711,6 @@ namespace HearingClinicManagementSystem.UI.Patient
             return allInStock;
         }
 
-        private void UpdateInventoryForCheckout(Order order)
-        {
-            foreach (var item in StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID))
-            {
-                var product = StaticDataProvider.Products.First(p => p.ProductID == item.ProductID);
-                product.QuantityInStock -= item.Quantity;
-
-                // Create inventory transaction record
-                var transaction = new InventoryTransaction
-                {
-                    TransactionID = StaticDataProvider.InventoryTransactions.Count > 0 ?
-                        StaticDataProvider.InventoryTransactions.Max(it => it.TransactionID) + 1 : 1,
-                    ProductID = product.ProductID,
-                    TransactionType = "Sale",
-                    Quantity = -item.Quantity,
-                    TransactionDate = DateTime.Now,
-                    ProcessedBy = AuthService.CurrentPatient.PatientID
-                };
-                StaticDataProvider.InventoryTransactions.Add(transaction);
-            }
-        }
-
-        private void RestoreInventoryForCancelledOrder(Order order)
-        {
-            foreach (var item in StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID))
-            {
-                var product = StaticDataProvider.Products.First(p => p.ProductID == item.ProductID);
-                product.QuantityInStock += item.Quantity;
-
-                // Create inventory transaction record for the return
-                var transaction = new InventoryTransaction
-                {
-                    TransactionID = StaticDataProvider.InventoryTransactions.Max(it => it.TransactionID) + 1,
-                    ProductID = product.ProductID,
-                    TransactionType = "Return",
-                    Quantity = item.Quantity,
-                    TransactionDate = DateTime.Now,
-                    ProcessedBy = AuthService.CurrentPatient.PatientID
-                };
-                StaticDataProvider.InventoryTransactions.Add(transaction);
-            }
-        }
-
-        private void CreateInvoiceForOrder(Order order, decimal total)
-        {
-            var invoice = new Invoice
-            {
-                InvoiceID = StaticDataProvider.Invoices.Count > 0 ?
-                    StaticDataProvider.Invoices.Max(i => i.InvoiceID) + 1 : 1,
-                OrderID = order.OrderID,
-                InvoiceDate = DateTime.Now,
-                TotalAmount = total,
-                Status = "Pending",
-                PaymentMethod = null
-            };
-            StaticDataProvider.Invoices.Add(invoice);
-        }
         #endregion
     }
 }
