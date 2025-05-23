@@ -1318,8 +1318,8 @@ namespace HearingClinicManagementSystem.Data
             // Continue with other entities...
         }
 
-        #region Clinic Statistics Repository Methods
-        
+        #region Updated Clinic Statistics Repository Methods
+
         /// <summary>
         /// Gets appointments within a date range with optional audiologist filtering
         /// </summary>
@@ -1329,14 +1329,27 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>List of appointments matching the criteria</returns>
         public List<Appointment> GetAppointmentsInDateRange(DateTime startDate, DateTime endDate, int? audiologistId = null)
         {
-            return _context.Appointments
-                .Include(a => a.Patient.User)
-                .Include(a => a.Audiologist.User)
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .Where(a => !audiologistId.HasValue || a.AudiologistID == audiologistId.Value)
-                .ToList();
+            try
+            {
+                var query = _context.Appointments
+                    .Include(a => a.Patient.User)
+                    .Include(a => a.Audiologist.User)
+                    .Where(a => a.Date >= startDate && a.Date <= endDate);
+                
+                if (audiologistId.HasValue)
+                {
+                    query = query.Where(a => a.AudiologistID == audiologistId.Value);
+                }
+                
+                return query.ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetAppointmentsInDateRange: {ex.Message}");
+                return new List<Appointment>();
+            }
         }
-        
+
         /// <summary>
         /// Gets a summary of appointment statistics for the dashboard
         /// </summary>
@@ -1345,66 +1358,101 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Summary statistics for appointments</returns>
         public dynamic GetAppointmentSummaryStats(DateTime startDate, DateTime endDate)
         {
-            var appointments = GetAppointmentsInDateRange(startDate, endDate);
-            
-            // Get completed appointments
-            var completedAppointments = appointments.Where(a => a.Status == "Completed").ToList();
-            
-            // Get total revenue
-            decimal totalRevenue = completedAppointments.Sum(a => a.Fee);
-            
-            // Get average appointment value
-            decimal avgAppointmentValue = completedAppointments.Count > 0 ? 
-                totalRevenue / completedAppointments.Count : 0;
-                
-            // Get most active doctor
-            var appointmentsByDoctor = appointments
-                .GroupBy(a => a.AudiologistID)
-                .Select(g => new { AudiologistID = g.Key, Count = g.Count() })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-                
-            string mostActiveDoctor = "No data available";
-            int mostActiveDoctorAppointments = 0;
-                
-            if (appointmentsByDoctor.Any())
+            try
             {
-                var topDoctor = appointmentsByDoctor.First();
-                var audiologist = _context.Audiologists
-                    .Include(a => a.User)
-                    .FirstOrDefault(a => a.AudiologistID == topDoctor.AudiologistID);
-                    
-                if (audiologist?.User != null)
+                var appointments = GetAppointmentsInDateRange(startDate, endDate);
+                
+                if (appointments == null || appointments.Count == 0)
                 {
-                    mostActiveDoctor = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}";
-                    mostActiveDoctorAppointments = topDoctor.Count;
+                    return new
+                    {
+                        TotalAppointments = 0,
+                        CompletedAppointments = 0,
+                        CancelledAppointments = 0,
+                        TotalRevenue = 0m,
+                        AverageAppointmentValue = 0m,
+                        MostActiveDoctor = "No data available",
+                        MostActiveDoctorAppointmentCount = 0,
+                        CompletionRate = 0d,
+                        CancellationRate = 0d
+                    };
                 }
+                
+                // Get completed appointments
+                var completedAppointments = appointments.Where(a => a.Status == "Completed").ToList();
+                
+                // Get total revenue - handle null fees
+                decimal totalRevenue = completedAppointments.Sum(a => a.Fee);
+                
+                // Get average appointment value
+                decimal avgAppointmentValue = completedAppointments.Count > 0 ? 
+                    totalRevenue / completedAppointments.Count : 0;
+                
+                // Get most active doctor
+                var mostActiveDoctor = "No data available";
+                int mostActiveDoctorAppointments = 0;
+                
+                var audiologistAppointments = appointments
+                    .GroupBy(a => a.AudiologistID)
+                    .Select(g => new { AudiologistID = g.Key, Count = g.Count() })
+                    .OrderByDescending(x => x.Count)
+                    .FirstOrDefault();
+                    
+                if (audiologistAppointments != null)
+                {
+                    var audiologist = _context.Audiologists
+                        .Include(a => a.User)
+                        .FirstOrDefault(a => a.AudiologistID == audiologistAppointments.AudiologistID);
+                        
+                    if (audiologist?.User != null)
+                    {
+                        mostActiveDoctor = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}";
+                        mostActiveDoctorAppointments = audiologistAppointments.Count;
+                    }
+                }
+                
+                // Calculate completion and cancellation rates
+                int totalAppointments = appointments.Count;
+                int cancelledAppointments = appointments.Count(a => a.Status == "Cancelled");
+                
+                double completionRate = totalAppointments > 0 ?
+                    (double)completedAppointments.Count / totalAppointments * 100 : 0;
+                    
+                double cancellationRate = totalAppointments > 0 ?
+                    (double)cancelledAppointments / totalAppointments * 100 : 0;
+                    
+                return new
+                {
+                    TotalAppointments = totalAppointments,
+                    CompletedAppointments = completedAppointments.Count,
+                    CancelledAppointments = cancelledAppointments,
+                    TotalRevenue = totalRevenue,
+                    AverageAppointmentValue = avgAppointmentValue,
+                    MostActiveDoctor = mostActiveDoctor,
+                    MostActiveDoctorAppointmentCount = mostActiveDoctorAppointments,
+                    CompletionRate = completionRate,
+                    CancellationRate = cancellationRate
+                };
             }
-            
-            // Completion rate
-            int totalAppointments = appointments.Count;
-            int cancelledAppointments = appointments.Count(a => a.Status == "Cancelled");
-            double completionRate = totalAppointments > 0 ?
-                (double)completedAppointments.Count / totalAppointments * 100 : 0;
-                
-            // Cancellation rate
-            double cancellationRate = totalAppointments > 0 ?
-                (double)cancelledAppointments / totalAppointments * 100 : 0;
-                
-            return new
+            catch (Exception ex)
             {
-                TotalAppointments = totalAppointments,
-                CompletedAppointments = completedAppointments.Count,
-                CancelledAppointments = cancelledAppointments,
-                TotalRevenue = totalRevenue,
-                AverageAppointmentValue = avgAppointmentValue,
-                MostActiveDoctor = mostActiveDoctor,
-                MostActiveDoctorAppointmentCount = mostActiveDoctorAppointments,
-                CompletionRate = completionRate,
-                CancellationRate = cancellationRate
-            };
+                Console.WriteLine($"Error in GetAppointmentSummaryStats: {ex.Message}");
+                
+                return new
+                {
+                    TotalAppointments = 0,
+                    CompletedAppointments = 0,
+                    CancelledAppointments = 0,
+                    TotalRevenue = 0m,
+                    AverageAppointmentValue = 0m,
+                    MostActiveDoctor = "Error retrieving data",
+                    MostActiveDoctorAppointmentCount = 0,
+                    CompletionRate = 0d,
+                    CancellationRate = 0d
+                };
+            }
         }
-        
+
         /// <summary>
         /// Gets statistics for top performing audiologists
         /// </summary>
@@ -1413,52 +1461,73 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>List of audiologists with their performance statistics</returns>
         public List<dynamic> GetTopAudiologistStats(DateTime startDate, DateTime endDate)
         {
-            var appointments = GetAppointmentsInDateRange(startDate, endDate);
-            
-            // Group appointments by audiologist and calculate stats
-            var audiologistStats = appointments
-                .GroupBy(a => a.AudiologistID)
-                .Select(g => new {
-                    AudiologistID = g.Key,
-                    TotalAppointments = g.Count(),
-                    CompletedAppointments = g.Count(a => a.Status == "Completed"),
-                    CancelledAppointments = g.Count(a => a.Status == "Cancelled"),
-                    TotalRevenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee)
-                })
-                .OrderByDescending(a => a.TotalRevenue)
-                .ToList();
-                
-            // Get audiologist details and format the result
-            var result = new List<dynamic>();
-            
-            foreach (var stat in audiologistStats)
+            try
             {
-                var audiologist = _context.Audiologists
+                var result = new List<dynamic>();
+                
+                // Get all audiologists first to ensure we include those with no appointments
+                var allAudiologists = _context.Audiologists
                     .Include(a => a.User)
-                    .FirstOrDefault(a => a.AudiologistID == stat.AudiologistID);
+                    .Where(a => a.User.IsActive)
+                    .ToList();
                     
-                if (audiologist?.User != null)
+                if (allAudiologists.Count == 0)
+                    return result;
+                
+                // Get all appointments within the date range
+                var appointments = GetAppointmentsInDateRange(startDate, endDate);
+                
+                // Group appointments by audiologist
+                var appointmentsByAudiologist = appointments
+                    .GroupBy(a => a.AudiologistID)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+                
+                // Create stats for each audiologist
+                foreach (var audiologist in allAudiologists)
                 {
-                    var avgRevenue = stat.CompletedAppointments > 0 ?
-                        stat.TotalRevenue / stat.CompletedAppointments : 0;
+                    var audiologistAppointments = new List<Appointment>();
+                    
+                    // Find appointments for this audiologist
+                    if (appointmentsByAudiologist.TryGetValue(audiologist.AudiologistID, out var appointments2))
+                    {
+                        audiologistAppointments = appointments2;
+                    }
+                    
+                    int totalAppointments = audiologistAppointments.Count;
+                    int completedAppointments = audiologistAppointments.Count(a => a.Status == "Completed");
+                    int cancelledAppointments = audiologistAppointments.Count(a => a.Status == "Cancelled");
+                    decimal totalRevenue = audiologistAppointments
+                        .Where(a => a.Status == "Completed")
+                        .Sum(a => a.Fee);
+                        
+                    decimal avgRevenue = completedAppointments > 0 ?
+                        totalRevenue / completedAppointments : 0;
+                        
+                    string name = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}";
                         
                     result.Add(new
                     {
-                        AudiologistID = stat.AudiologistID,
-                        Name = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}",
+                        AudiologistID = audiologist.AudiologistID,
+                        Name = name,
                         Specialization = audiologist.Specialization ?? "General",
-                        TotalAppointments = stat.TotalAppointments,
-                        CompletedAppointments = stat.CompletedAppointments,
-                        CancelledAppointments = stat.CancelledAppointments,
-                        TotalRevenue = stat.TotalRevenue,
+                        TotalAppointments = totalAppointments,
+                        CompletedAppointments = completedAppointments,
+                        CancelledAppointments = cancelledAppointments,
+                        TotalRevenue = totalRevenue,
                         AverageRevenue = avgRevenue
                     });
                 }
+                
+                // Sort by total revenue (descending)
+                return result.OrderByDescending(a => ((dynamic)a).TotalRevenue).ToList();
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetTopAudiologistStats: {ex.Message}");
+                return new List<dynamic>();
+            }
         }
-        
+
         /// <summary>
         /// Gets the most recent appointments for the clinic
         /// </summary>
@@ -1466,44 +1535,55 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>List of recent appointments with all related details</returns>
         public List<dynamic> GetRecentAppointments(int count = 15)
         {
-            var recentAppointments = _context.Appointments
-                .Include(a => a.Patient.User)
-                .Include(a => a.Audiologist.User)
-                .OrderByDescending(a => a.Date)
-                .Take(count)
-                .ToList();
-                
-            var result = new List<dynamic>();
-            
-            foreach (var appointment in recentAppointments)
+            try
             {
-                string patientName = "Unknown";
-                if (appointment.Patient?.User != null)
+                var result = new List<dynamic>();
+                
+                // Get the most recent appointments regardless of status
+                var recentAppointments = _context.Appointments
+                    .Include(a => a.Patient.User)
+                    .Include(a => a.Audiologist.User)
+                    .OrderByDescending(a => a.Date)
+                    .Take(count)
+                    .ToList();
+                    
+                foreach (var appointment in recentAppointments)
                 {
-                    patientName = $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}";
+                    // Handle potential null references safely
+                    string patientName = "Unknown";
+                    if (appointment.Patient?.User != null)
+                    {
+                        patientName = $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}";
+                    }
+                    
+                    string audiologistName = "Unknown";
+                    if (appointment.Audiologist?.User != null)
+                    {
+                        audiologistName = $"Dr. {appointment.Audiologist.User.FirstName} {appointment.Audiologist.User.LastName}";
+                    }
+                    
+                    // Add appointment details to result
+                    result.Add(new
+                    {
+                        AppointmentID = appointment.AppointmentID,
+                        Date = appointment.Date,
+                        PatientName = patientName,
+                        AudiologistName = audiologistName,
+                        Purpose = appointment.PurposeOfVisit ?? "Not specified",
+                        Fee = appointment.Fee,
+                        Status = appointment.Status ?? "Unknown"
+                    });
                 }
                 
-                string audiologistName = "Unknown";
-                if (appointment.Audiologist?.User != null)
-                {
-                    audiologistName = $"Dr. {appointment.Audiologist.User.FirstName} {appointment.Audiologist.User.LastName}";
-                }
-                
-                result.Add(new
-                {
-                    AppointmentID = appointment.AppointmentID,
-                    Date = appointment.Date,
-                    PatientName = patientName,
-                    AudiologistName = audiologistName,
-                    Purpose = appointment.PurposeOfVisit,
-                    Fee = appointment.Fee,
-                    Status = appointment.Status
-                });
+                return result;
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetRecentAppointments: {ex.Message}");
+                return new List<dynamic>();
+            }
         }
-        
+
         /// <summary>
         /// Gets financial summary statistics grouped by visit purpose
         /// </summary>
@@ -1513,59 +1593,78 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Financial statistics grouped by visit purpose</returns>
         public List<dynamic> GetFinancialSummaryByPurpose(DateTime startDate, DateTime endDate, int? audiologistId = null)
         {
-            var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId)
-                .Where(a => a.Status == "Completed")
-                .ToList();
-                
-            var totalRevenue = appointments.Sum(a => a.Fee);
-                
-            // Group appointments by purpose and calculate stats
-            var purposeSummary = appointments
-                .GroupBy(a => a.PurposeOfVisit)
-                .Select(g => new {
-                    Purpose = g.Key,
-                    Count = g.Count(),
-                    TotalRevenue = g.Sum(a => a.Fee),
-                    AverageRevenue = g.Average(a => a.Fee)
-                })
-                .OrderByDescending(s => s.TotalRevenue)
-                .ToList();
-                
-            var result = new List<dynamic>();
-            
-            foreach (var summary in purposeSummary)
+            try
             {
-                decimal percentOfTotal = totalRevenue > 0 ? (summary.TotalRevenue / totalRevenue) * 100 : 0;
+                var result = new List<dynamic>();
                 
-                result.Add(new
+                // Get completed appointments in the date range
+                var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId)
+                    .Where(a => a.Status == "Completed")
+                    .ToList();
+                    
+                if (appointments.Count == 0)
+                    return result;
+                    
+                // Handle null purposes
+                foreach (var appointment in appointments)
                 {
-                    Purpose = summary.Purpose,
-                    Count = summary.Count,
-                    TotalRevenue = summary.TotalRevenue,
-                    AverageRevenue = summary.AverageRevenue,
-                    PercentOfTotal = percentOfTotal
-                });
+                    if (string.IsNullOrEmpty(appointment.PurposeOfVisit))
+                    {
+                        appointment.PurposeOfVisit = "Not specified";
+                    }
+                }
+                
+                // Calculate total revenue
+                decimal totalRevenue = appointments.Sum(a => a.Fee);
+                
+                // Group by purpose
+                var groupedByPurpose = appointments
+                    .GroupBy(a => a.PurposeOfVisit)
+                    .ToList();
+                    
+                // Create summary for each purpose
+                foreach (var group in groupedByPurpose)
+                {
+                    int count = group.Count();
+                    decimal groupRevenue = group.Sum(a => a.Fee);
+                    decimal averageRevenue = count > 0 ? groupRevenue / count : 0;
+                    decimal percentOfTotal = totalRevenue > 0 ? (groupRevenue / totalRevenue) * 100 : 0;
+                    
+                    result.Add(new
+                    {
+                        Purpose = group.Key,
+                        Count = count,
+                        TotalRevenue = groupRevenue,
+                        AverageRevenue = averageRevenue,
+                        PercentOfTotal = percentOfTotal
+                    });
+                }
+                
+                // Add total row
+                if (groupedByPurpose.Any())
+                {
+                    int totalCount = appointments.Count;
+                    decimal avgTotalRevenue = totalCount > 0 ? totalRevenue / totalCount : 0;
+                    
+                    result.Add(new
+                    {
+                        Purpose = "TOTAL",
+                        Count = totalCount,
+                        TotalRevenue = totalRevenue,
+                        AverageRevenue = avgTotalRevenue,
+                        PercentOfTotal = 100m
+                    });
+                }
+                
+                return result.OrderByDescending(r => ((dynamic)r).TotalRevenue).ToList();
             }
-            
-            // Add total summary
-            if (purposeSummary.Any())
+            catch (Exception ex)
             {
-                int totalCount = purposeSummary.Sum(s => s.Count);
-                decimal avgRevenue = totalCount > 0 ? totalRevenue / totalCount : 0;
-                
-                result.Add(new
-                {
-                    Purpose = "TOTAL",
-                    Count = totalCount,
-                    TotalRevenue = totalRevenue,
-                    AverageRevenue = avgRevenue,
-                    PercentOfTotal = 100m
-                });
+                Console.WriteLine($"Error in GetFinancialSummaryByPurpose: {ex.Message}");
+                return new List<dynamic>();
             }
-            
-            return result;
         }
-        
+
         /// <summary>
         /// Gets payment method statistics for completed appointments
         /// </summary>
@@ -1575,61 +1674,83 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Statistics about payment methods used</returns>
         public List<dynamic> GetPaymentMethodStats(DateTime startDate, DateTime endDate, int? audiologistId = null)
         {
-            var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId)
-                .Where(a => a.Status == "Completed")
-                .ToList();
-                
-            var appointmentIds = appointments.Select(a => a.AppointmentID).ToList();
-            
-            var invoices = _context.Invoices
-                .Where(i => i.AppointmentID.HasValue && appointmentIds.Contains(i.AppointmentID.Value))
-                .ToList();
-                
-            var totalAmount = invoices.Sum(i => i.TotalAmount);
-            
-            // Group invoices by payment method and calculate stats
-            var paymentSummary = invoices
-                .GroupBy(i => i.PaymentMethod ?? "Unknown")
-                .Select(g => new {
-                    Method = g.Key,
-                    Count = g.Count(),
-                    TotalAmount = g.Sum(i => i.TotalAmount)
-                })
-                .OrderByDescending(s => s.TotalAmount)
-                .ToList();
-                
-            var result = new List<dynamic>();
-            
-            foreach (var summary in paymentSummary)
+            try
             {
-                decimal percentOfTotal = totalAmount > 0 ? (summary.TotalAmount / totalAmount) * 100 : 0;
+                var result = new List<dynamic>();
                 
-                result.Add(new
+                // Get completed appointments in the date range
+                var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId)
+                    .Where(a => a.Status == "Completed")
+                    .ToList();
+                    
+                if (appointments.Count == 0)
+                    return result;
+                    
+                // Get appointment IDs
+                var appointmentIds = appointments.Select(a => a.AppointmentID).ToList();
+                
+                // Get invoices for these appointments
+                var invoices = _context.Invoices
+                    .Where(i => i.AppointmentID.HasValue && appointmentIds.Contains(i.AppointmentID.Value))
+                    .ToList();
+                    
+                if (invoices.Count == 0)
+                    return result;
+                    
+                // Set "Unknown" for any nulls
+                foreach (var invoice in invoices)
                 {
-                    PaymentMethod = summary.Method,
-                    Count = summary.Count,
-                    TotalAmount = summary.TotalAmount,
-                    PercentOfTotal = percentOfTotal
-                });
+                    if (string.IsNullOrEmpty(invoice.PaymentMethod))
+                    {
+                        invoice.PaymentMethod = "Unknown";
+                    }
+                }
+                
+                // Get total paid amount
+                decimal totalAmount = invoices.Sum(i => i.TotalAmount);
+                
+                // Group by payment method
+                var groupedByMethod = invoices
+                    .GroupBy(i => i.PaymentMethod)
+                    .ToList();
+                    
+                // Create summary for each payment method
+                foreach (var group in groupedByMethod)
+                {
+                    int count = group.Count();
+                    decimal amount = group.Sum(i => i.TotalAmount);
+                    decimal percentOfTotal = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                    
+                    result.Add(new
+                    {
+                        PaymentMethod = group.Key,
+                        Count = count,
+                        TotalAmount = amount,
+                        PercentOfTotal = percentOfTotal
+                    });
+                }
+                
+                // Add total row
+                if (groupedByMethod.Any())
+                {
+                    result.Add(new
+                    {
+                        PaymentMethod = "TOTAL",
+                        Count = invoices.Count,
+                        TotalAmount = totalAmount,
+                        PercentOfTotal = 100m
+                    });
+                }
+                
+                return result.OrderByDescending(r => ((dynamic)r).TotalAmount).ToList();
             }
-            
-            // Add total summary
-            if (paymentSummary.Any())
+            catch (Exception ex)
             {
-                int totalCount = paymentSummary.Sum(s => s.Count);
-                
-                result.Add(new
-                {
-                    PaymentMethod = "TOTAL",
-                    Count = totalCount,
-                    TotalAmount = totalAmount,
-                    PercentOfTotal = 100m
-                });
+                Console.WriteLine($"Error in GetPaymentMethodStats: {ex.Message}");
+                return new List<dynamic>();
             }
-            
-            return result;
         }
-        
+
         /// <summary>
         /// Gets monthly revenue statistics
         /// </summary>
@@ -1638,69 +1759,106 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Monthly revenue statistics</returns>
         public List<dynamic> GetMonthlyRevenueStats(int monthsToInclude = 12, int? audiologistId = null)
         {
-            DateTime startMonth = new DateTime(DateTime.Now.AddMonths(-monthsToInclude + 1).Year, 
-                                             DateTime.Now.AddMonths(-monthsToInclude + 1).Month, 1);
-                                             
-            var appointments = GetAppointmentsInDateRange(startMonth, DateTime.Now, audiologistId);
-            
-            // Group appointments by month
-            var monthlyStats = appointments
-                .GroupBy(a => new { Year = a.Date.Year, Month = a.Date.Month })
-                .Select(g => new {
-                    Year = g.Key.Year,
-                    Month = g.Key.Month,
-                    MonthName = CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(g.Key.Month),
-                    TotalCount = g.Count(),
-                    CompletedCount = g.Count(a => a.Status == "Completed"),
-                    Revenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee),
-                })
-                .OrderBy(s => s.Year).ThenBy(s => s.Month)
-                .ToList();
-                
-            var result = new List<dynamic>();
-            
-            foreach (var stat in monthlyStats)
+            try
             {
-                decimal avgRevenue = stat.CompletedCount > 0 ? stat.Revenue / stat.CompletedCount : 0;
-                double completionRate = stat.TotalCount > 0 ? 
-                    (double)stat.CompletedCount / stat.TotalCount * 100 : 0;
+                var result = new List<dynamic>();
+                
+                // Calculate date range to include specified number of months
+                DateTime startMonth = new DateTime(DateTime.Now.AddMonths(-monthsToInclude + 1).Year, 
+                                                DateTime.Now.AddMonths(-monthsToInclude + 1).Month, 1);
+                DateTime endMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 
+                                            DateTime.DaysInMonth(DateTime.Now.Year, DateTime.Now.Month), 23, 59, 59);
+                
+                // Get all appointments in the date range
+                var appointments = GetAppointmentsInDateRange(startMonth, endMonth, audiologistId);
+                
+                if (appointments.Count == 0)
+                    return result;
                     
-                result.Add(new
+                // Create a list of month/year combinations to ensure all months are included
+                var monthYearList = new List<Tuple<int, int, string>>();
+                for (int i = 0; i < monthsToInclude; i++)
                 {
-                    Month = stat.MonthName,
-                    Year = stat.Year,
-                    AppointmentCount = stat.TotalCount,
-                    CompletedCount = stat.CompletedCount,
-                    Revenue = stat.Revenue,
-                    AverageRevenue = avgRevenue,
-                    CompletionRate = completionRate
-                });
-            }
-            
-            // Add total summary
-            if (monthlyStats.Any())
-            {
-                int totalCount = monthlyStats.Sum(s => s.TotalCount);
-                int completedCount = monthlyStats.Sum(s => s.CompletedCount);
-                decimal totalRevenue = monthlyStats.Sum(s => s.Revenue);
-                decimal avgRevenue = completedCount > 0 ? totalRevenue / completedCount : 0;
-                double completionRate = totalCount > 0 ? (double)completedCount / totalCount * 100 : 0;
+                    var currentDate = DateTime.Now.AddMonths(-i);
+                    var monthName = CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(currentDate.Month);
+                    monthYearList.Add(new Tuple<int, int, string>(currentDate.Year, currentDate.Month, monthName));
+                }
+                monthYearList.Reverse(); // Put in chronological order
                 
-                result.Add(new
+                // Group appointments by month and year
+                var appointmentsByMonth = appointments
+                    .GroupBy(a => new { Year = a.Date.Year, Month = a.Date.Month })
+                    .ToDictionary(g => (g.Key.Year, g.Key.Month), g => g.ToList());
+                    
+                // Calculate stats for each month
+                decimal totalRevenue = 0;
+                int totalAppointments = 0;
+                int totalCompleted = 0;
+                
+                foreach (var monthYear in monthYearList)
                 {
-                    Month = "TOTAL",
-                    Year = "",
-                    AppointmentCount = totalCount,
-                    CompletedCount = completedCount,
-                    Revenue = totalRevenue,
-                    AverageRevenue = avgRevenue,
-                    CompletionRate = completionRate
-                });
+                    int year = monthYear.Item1;
+                    int month = monthYear.Item2;
+                    string monthName = monthYear.Item3;
+                    
+                    // Find appointments for this month
+                    List<Appointment> monthAppointments;
+                    if (!appointmentsByMonth.TryGetValue((year, month), out monthAppointments))
+                    {
+                        monthAppointments = new List<Appointment>();
+                    }
+                    
+                    int appointmentCount = monthAppointments.Count;
+                    int completedCount = monthAppointments.Count(a => a.Status == "Completed");
+                    decimal revenue = monthAppointments.Where(a => a.Status == "Completed").Sum(a => a.Fee);
+                    decimal avgRevenue = completedCount > 0 ? revenue / completedCount : 0;
+                    double completionRate = appointmentCount > 0 ? (double)completedCount / appointmentCount * 100 : 0;
+                    
+                    // Add stats to result
+                    result.Add(new
+                    {
+                        Month = monthName,
+                        Year = year,
+                        AppointmentCount = appointmentCount,
+                        CompletedCount = completedCount,
+                        Revenue = revenue,
+                        AverageRevenue = avgRevenue,
+                        CompletionRate = completionRate
+                    });
+                    
+                    // Update totals
+                    totalRevenue += revenue;
+                    totalAppointments += appointmentCount;
+                    totalCompleted += completedCount;
+                }
+                
+                // Add total row
+                if (result.Count > 0)
+                {
+                    decimal avgTotalRevenue = totalCompleted > 0 ? totalRevenue / totalCompleted : 0;
+                    double overallCompletionRate = totalAppointments > 0 ? (double)totalCompleted / totalAppointments * 100 : 0;
+                    
+                    result.Add(new
+                    {
+                        Month = "TOTAL",
+                        Year = (int?)null,
+                        AppointmentCount = totalAppointments,
+                        CompletedCount = totalCompleted,
+                        Revenue = totalRevenue,
+                        AverageRevenue = avgTotalRevenue,
+                        CompletionRate = overallCompletionRate
+                    });
+                }
+                
+                return result;
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetMonthlyRevenueStats: {ex.Message}");
+                return new List<dynamic>();
+            }
         }
-        
+
         /// <summary>
         /// Gets visit purpose distribution statistics
         /// </summary>
@@ -1710,101 +1868,135 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Statistics about visit purpose distribution</returns>
         public List<dynamic> GetVisitPurposeStats(DateTime startDate, DateTime endDate, int? audiologistId = null)
         {
-            var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId);
-            int totalAppointments = appointments.Count;
-            
-            // Group appointments by purpose and calculate stats
-            var appointmentsByPurpose = appointments
-                .GroupBy(a => a.PurposeOfVisit)
-                .Select(g => new {
-                    Purpose = g.Key,
-                    Count = g.Count(),
-                    CompletedCount = g.Count(a => a.Status == "Completed"),
-                    TotalRevenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee)
-                })
-                .OrderByDescending(a => a.Count)
-                .ToList();
-                
-            var result = new List<dynamic>();
-            
-            foreach (var summary in appointmentsByPurpose)
+            try
             {
-                double percentage = totalAppointments > 0 ?
-                    (double)summary.Count / totalAppointments * 100 : 0;
-                    
-                decimal avgFee = summary.CompletedCount > 0 ?
-                    summary.TotalRevenue / summary.CompletedCount : 0;
-                    
-                result.Add(new
-                {
-                    Purpose = summary.Purpose,
-                    Count = summary.Count,
-                    CompletedCount = summary.CompletedCount,
-                    Percentage = percentage,
-                    AverageFee = avgFee,
-                    TotalRevenue = summary.TotalRevenue
-                });
-            }
-            
-            // Add total summary
-            if (appointmentsByPurpose.Any())
-            {
-                int totalCount = appointmentsByPurpose.Sum(s => s.Count);
-                int totalCompletedCount = appointmentsByPurpose.Sum(s => s.CompletedCount);
-                decimal totalRevenue = appointmentsByPurpose.Sum(s => s.TotalRevenue);
-                decimal avgFee = totalCompletedCount > 0 ? totalRevenue / totalCompletedCount : 0;
+                var result = new List<dynamic>();
                 
-                result.Add(new
+                // Get all appointments in the date range
+                var appointments = GetAppointmentsInDateRange(startDate, endDate, audiologistId);
+                
+                if (appointments.Count == 0)
+                    return result;
+                    
+                // Handle null purposes
+                foreach (var appointment in appointments)
                 {
-                    Purpose = "TOTAL",
-                    Count = totalCount,
-                    CompletedCount = totalCompletedCount,
-                    Percentage = 100.0,
-                    AverageFee = avgFee,
-                    TotalRevenue = totalRevenue
-                });
+                    if (string.IsNullOrEmpty(appointment.PurposeOfVisit))
+                    {
+                        appointment.PurposeOfVisit = "Not specified";
+                    }
+                }
+                
+                // Group by purpose
+                var groupedByPurpose = appointments
+                    .GroupBy(a => a.PurposeOfVisit)
+                    .ToList();
+                    
+                // Calculate total count for percentages
+                int totalAppointments = appointments.Count;
+                
+                // Create summary for each purpose
+                foreach (var group in groupedByPurpose)
+                {
+                    int count = group.Count();
+                    int completedCount = group.Count(a => a.Status == "Completed");
+                    double percentage = totalAppointments > 0 ? (double)count / totalAppointments * 100 : 0;
+                    decimal totalRevenue = group.Where(a => a.Status == "Completed").Sum(a => a.Fee);
+                    decimal avgFee = completedCount > 0 ? totalRevenue / completedCount : 0;
+                    
+                    result.Add(new
+                    {
+                        Purpose = group.Key,
+                        Count = count,
+                        CompletedCount = completedCount,
+                        Percentage = percentage,
+                        AverageFee = avgFee,
+                        TotalRevenue = totalRevenue
+                    });
+                }
+                
+                // Add total row
+                if (groupedByPurpose.Any())
+                {
+                    int totalCompleted = appointments.Count(a => a.Status == "Completed");
+                    decimal totalRevenue = appointments.Where(a => a.Status == "Completed").Sum(a => a.Fee);
+                    decimal avgFee = totalCompleted > 0 ? totalRevenue / totalCompleted : 0;
+                    
+                    result.Add(new
+                    {
+                        Purpose = "TOTAL",
+                        Count = totalAppointments,
+                        CompletedCount = totalCompleted,
+                        Percentage = 100.0,
+                        AverageFee = avgFee,
+                        TotalRevenue = totalRevenue
+                    });
+                }
+                
+                return result.OrderByDescending(r => ((dynamic)r).Count).ToList();
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetVisitPurposeStats: {ex.Message}");
+                return new List<dynamic>();
+            }
         }
-        
+
         /// <summary>
         /// Gets all audiologists for filtering in the UI
         /// </summary>
         /// <returns>List of audiologists with their ID and name</returns>
         public List<dynamic> GetAudiologistsForFilter()
         {
-            var result = new List<dynamic>();
-            
-            // Add "All Audiologists" option
-            result.Add(new
+            try
             {
-                AudiologistID = (int?)null,
-                DisplayName = "All Audiologists"
-            });
-            
-            // Get all audiologists
-            var audiologists = _context.Audiologists
-                .Include(a => a.User)
-                .Where(a => a.User.IsActive)
-                .OrderBy(a => a.User.LastName)
-                .ThenBy(a => a.User.FirstName)
-                .ToList();
+                var result = new List<dynamic>();
                 
-            foreach (var audiologist in audiologists)
-            {
-                if (audiologist.User != null)
+                // Add "All Audiologists" option
+                result.Add(new
                 {
-                    result.Add(new
+                    AudiologistID = (int?)null,
+                    DisplayName = "All Audiologists"
+                });
+                
+                // Get all active audiologists
+                var audiologists = _context.Audiologists
+                    .Include(a => a.User)
+                    .Where(a => a.User.IsActive)
+                    .OrderBy(a => a.User.LastName)
+                    .ThenBy(a => a.User.FirstName)
+                    .ToList();
+                    
+                foreach (var audiologist in audiologists)
+                {
+                    if (audiologist.User != null)
                     {
-                        AudiologistID = audiologist.AudiologistID,
-                        DisplayName = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}"
-                    });
+                        result.Add(new
+                        {
+                            AudiologistID = audiologist.AudiologistID,
+                            DisplayName = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}"
+                        });
+                    }
                 }
+                
+                return result;
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetAudiologistsForFilter: {ex.Message}");
+                
+                // Return at least the "All" option
+                return new List<dynamic>
+                {
+                    new
+                    {
+                        AudiologistID = (int?)null,
+                        DisplayName = "All Audiologists"
+                    }
+                };
+            }
         }
+
         #endregion
 
         #region Inventory Reporting Repository Methods
@@ -1815,17 +2007,21 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Summary statistics for inventory dashboard</returns>
         public dynamic GetInventorySummaryStats()
         {
-            // Get all confirmed orders
-            var confirmedOrders = _context.Orders.Where(o => o.Status == "Confirmed").ToList();
-            
-            // Calculate total sales
-            decimal totalSales = confirmedOrders.Sum(o => o.TotalAmount);
-            
-            // Calculate product sales
-            var productSales = new Dictionary<int, int>();
-            foreach (var order in confirmedOrders)
+            try
             {
-                var orderItems = _context.OrderItems.Where(oi => oi.OrderID == order.OrderID);
+                // Get all confirmed orders
+                var confirmedOrders = _context.Orders.Where(o => o.Status == "Confirmed" || o.Status == "Completed").ToList();
+                
+                // Calculate total sales
+                decimal totalSales = confirmedOrders.Sum(o => o.TotalAmount);
+                
+                // Calculate product sales - use a safer way to calculate
+                var orderItems = _context.OrderItems
+                    .Include(oi => oi.Order)
+                    .Where(oi => (oi.Order.Status == "Confirmed" || oi.Order.Status == "Completed"))
+                    .ToList();
+
+                var productSales = new Dictionary<int, int>();
                 foreach (var item in orderItems)
                 {
                     if (productSales.ContainsKey(item.ProductID))
@@ -1833,44 +2029,59 @@ namespace HearingClinicManagementSystem.Data
                     else
                         productSales[item.ProductID] = item.Quantity;
                 }
-            }
-            
-            // Find most popular product
-            string mostPopularProduct = "No data available";
-            int mostPopularProductCount = 0;
-            
-            if (productSales.Any())
-            {
-                var topProduct = productSales.OrderByDescending(kv => kv.Value).First();
-                var product = _context.Products.FirstOrDefault(p => p.ProductID == topProduct.Key);
-                if (product != null)
+                
+                // Find most popular product
+                string mostPopularProduct = "No data available";
+                int mostPopularProductCount = 0;
+                
+                if (productSales.Any())
                 {
-                    mostPopularProduct = $"{product.Manufacturer} {product.Model}";
-                    mostPopularProductCount = topProduct.Value;
+                    var topProductKvp = productSales.OrderByDescending(kv => kv.Value).FirstOrDefault();
+                    var product = _context.Products.Find(topProductKvp.Key);
+                    if (product != null)
+                    {
+                        mostPopularProduct = $"{product.Manufacturer} {product.Model}";
+                        mostPopularProductCount = topProductKvp.Value;
+                    }
                 }
-                else
+                
+                // Count low stock products
+                int lowStockCount = _context.Products.Count(p => p.QuantityInStock <= 10);
+                
+                // Get total products count
+                int totalProducts = _context.Products.Count();
+                
+                // Calculate average order value safely
+                decimal averageOrderValue = confirmedOrders.Count > 0 ? 
+                    totalSales / confirmedOrders.Count : 0;
+                
+                return new 
                 {
-                    mostPopularProduct = $"Product #{topProduct.Key}";
-                    mostPopularProductCount = topProduct.Value;
-                }
+                    TotalOrders = confirmedOrders.Count,
+                    TotalSales = totalSales,
+                    AverageOrderValue = averageOrderValue,
+                    MostPopularProduct = mostPopularProduct,
+                    MostPopularProductCount = mostPopularProductCount,
+                    LowStockCount = lowStockCount,
+                    TotalProducts = totalProducts
+                };
             }
-            
-            // Count low stock products
-            int lowStockCount = _context.Products.Count(p => p.QuantityInStock <= 10);
-            
-            // Get total products count
-            int totalProducts = _context.Products.Count();
-            
-            return new 
+            catch (Exception ex)
             {
-                TotalOrders = confirmedOrders.Count,
-                TotalSales = totalSales,
-                AverageOrderValue = confirmedOrders.Count > 0 ? totalSales / confirmedOrders.Count : 0,
-                MostPopularProduct = mostPopularProduct,
-                MostPopularProductCount = mostPopularProductCount,
-                LowStockCount = lowStockCount,
-                TotalProducts = totalProducts
-            };
+                Console.WriteLine($"Error in GetInventorySummaryStats: {ex.Message}");
+                
+                // Return empty object with defaults if error occurs
+                return new 
+                {
+                    TotalOrders = 0,
+                    TotalSales = 0m,
+                    AverageOrderValue = 0m,
+                    MostPopularProduct = "Error retrieving data",
+                    MostPopularProductCount = 0,
+                    LowStockCount = 0,
+                    TotalProducts = 0
+                };
+            }
         }
         
         /// <summary>
@@ -1882,47 +2093,55 @@ namespace HearingClinicManagementSystem.Data
         {
             try
             {
-                // First get all order items to work with (materialized to memory)
+                var result = new List<dynamic>();
+                
+                // Get completed and confirmed orders
                 var orderItems = _context.OrderItems
                     .Include(oi => oi.Order)
                     .Include(oi => oi.Product)
-                    .Where(oi => oi.Order.Status == "Confirmed" || oi.Order.Status == "Completed")
+                    .Where(oi => 
+                        (oi.Order.Status == "Confirmed" || oi.Order.Status == "Completed") && 
+                        oi.Product != null) // Ensure product is not null
                     .ToList();
                 
-                // Now process in memory (not in LINQ to Entities)
+                if (!orderItems.Any())
+                    return result; // Return empty list if no order items
+                
+                // Group by product
                 var productGroups = orderItems
                     .GroupBy(oi => oi.ProductID)
                     .Select(g => new {
                         ProductID = g.Key,
+                        Product = g.First().Product, // Get the product instance
                         UnitsSold = g.Sum(oi => oi.Quantity),
                         TotalSales = g.Sum(oi => oi.Quantity * oi.UnitPrice)
                     })
-                    .OrderByDescending(p => p.TotalSales)
+                    .Where(g => g.Product != null) // Ensure product is not null
+                    .OrderByDescending(g => g.TotalSales)
                     .Take(count)
                     .ToList();
                 
-                // Calculate total sales for percentage calculation
+                if (!productGroups.Any())
+                    return result; // Return empty list if no valid groupings
+                
+                // Calculate total sales
                 decimal totalSales = productGroups.Sum(p => p.TotalSales);
                 
-                // Create result list
-                var result = new List<dynamic>();
-                
+                // Generate result list
                 for (int i = 0; i < productGroups.Count; i++)
                 {
                     var productData = productGroups[i];
-                    var product = _context.Products.Find(productData.ProductID);
-                    
-                    if (product == null) continue;
+                    if (productData.Product == null)
+                        continue;
                     
                     decimal percentOfSales = totalSales > 0 ? 
                         (productData.TotalSales / totalSales) * 100 : 0;
                     
-                    result.Add(new
-                    {
+                    result.Add(new {
                         ProductID = productData.ProductID,
                         Rank = i + 1,
-                        ProductName = product.Model,
-                        Manufacturer = product.Manufacturer,
+                        ProductName = productData.Product.Model,
+                        Manufacturer = productData.Product.Manufacturer,
                         UnitsSold = productData.UnitsSold,
                         TotalSales = productData.TotalSales,
                         PercentOfSales = percentOfSales
@@ -1933,11 +2152,8 @@ namespace HearingClinicManagementSystem.Data
             }
             catch (Exception ex)
             {
-                // Log the error if possible
                 Console.WriteLine($"Error in GetTopSellingProducts: {ex.Message}");
-                
-                // Return empty list on error
-                return new List<dynamic>();
+                return new List<dynamic>(); // Return empty list on error
             }
         }
         
@@ -1950,57 +2166,50 @@ namespace HearingClinicManagementSystem.Data
         {
             try
             {
-                // Get products with low stock - do this separately to catch any errors
-                var lowStockProducts = _context.Products
-                    .Where(p => p.QuantityInStock <= threshold)
-                    .ToList();
-                
-                // Create a completely separate list for the results
                 var result = new List<dynamic>();
                 
-                // Process each product individually, with its own error handling
+                // Get products with low stock
+                var lowStockProducts = _context.Products
+                    .Where(p => p.QuantityInStock <= threshold)
+                    .OrderBy(p => p.QuantityInStock)
+                    .ToList();
+                
+                if (!lowStockProducts.Any())
+                    return result; // Return empty list if no low stock products
+                
                 foreach (var product in lowStockProducts)
                 {
                     try
                     {
-                        // Safely get the last restock date (if any)
-                        DateTime? lastRestockDate = null;
+                        // Get last restock transaction
                         var lastRestock = _context.InventoryTransactions
                             .Where(t => t.ProductID == product.ProductID && t.TransactionType == "Restock")
                             .OrderByDescending(t => t.TransactionDate)
                             .FirstOrDefault();
                         
-                        if (lastRestock != null)
-                        {
-                            lastRestockDate = lastRestock.TransactionDate;
-                        }
+                        // Format status based on stock level
+                        string status;
+                        if (product.QuantityInStock <= 0)
+                            status = "Out of Stock";
+                        else if (product.QuantityInStock <= 5)
+                            status = "Critical Low";
+                        else
+                            status = "Low Stock";
                         
-                        // Safe access to product fields with null checks and defaults
-                        string productName = !string.IsNullOrEmpty(product.Model) ? product.Model : "Unknown";
-                        string manufacturer = !string.IsNullOrEmpty(product.Manufacturer) ? product.Manufacturer : "Unknown";
-                        int stockQuantity = product.QuantityInStock;
-                        decimal price = product.Price;
-                        string status = GetStockStatusText(stockQuantity);
-                        
-                        // Create a new anonymous object with explicit property names
-                        var productInfo = new 
-                        {
+                        result.Add(new {
                             ProductID = product.ProductID,
-                            ProductName = productName,
-                            Manufacturer = manufacturer,
-                            CurrentStock = stockQuantity,
+                            ProductName = product.Model,
+                            Manufacturer = product.Manufacturer,
+                            CurrentStock = product.QuantityInStock,
                             Status = status,
-                            Price = price,
-                            LastRestocked = lastRestockDate
-                        };
-                        
-                        // Add to the result list
-                        result.Add(productInfo);
+                            Price = product.Price,
+                            LastRestocked = lastRestock?.TransactionDate
+                        });
                     }
                     catch (Exception ex)
                     {
-                        // If there's an error with one product, log it but continue with others
                         Console.WriteLine($"Error processing product {product.ProductID}: {ex.Message}");
+                        // Continue with the next product if there's an error with this one
                     }
                 }
                 
@@ -2009,27 +2218,10 @@ namespace HearingClinicManagementSystem.Data
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in GetLowStockProducts: {ex.Message}");
-                return new List<dynamic>();
+                return new List<dynamic>(); // Return empty list on error
             }
         }
 
-        /// <summary>
-        /// Helper method to determine stock status text
-        /// </summary>
-        /// <param name="quantity">Current stock quantity</param>
-        /// <returns>Text description of stock status</returns>
-        private string GetStockStatusText(int quantity)
-        {
-            if (quantity <= 0)
-                return "Out of Stock";
-            else if (quantity <= 5)
-                return "Critical Low";
-            else if (quantity <= 10)
-                return "Low Stock";
-            else
-                return "In Stock";
-        }
-        
         /// <summary>
         /// Gets summary of inventory transactions by type
         /// </summary>
@@ -2039,75 +2231,84 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>Statistics grouped by transaction type</returns>
         public List<dynamic> GetTransactionSummary(DateTime startDate, DateTime endDate, string transactionType = null)
         {
-            // Get transactions within date range
-            var query = _context.InventoryTransactions
-                .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate);
-                
-            // Apply transaction type filter if specified
-            if (!string.IsNullOrEmpty(transactionType) && transactionType != "All")
+            try
             {
-                query = query.Where(t => t.TransactionType == transactionType);
-            }
-            
-            // Materialize the query to avoid LINQ to Entity translation issues
-            var transactions = query.ToList();
-            
-            // Group by transaction type and calculate stats - do this in memory
-            var transactionStats = transactions
-                .GroupBy(t => t.TransactionType)
-                .Select(g => new
-                {
-                    Type = g.Key,
-                    Count = g.Count(),
-                    TotalQuantity = g.Sum(t => t.Quantity),
-                    ProductsAffected = g.Select(t => t.ProductID).Distinct().Count(),
-                    AvgQuantityPerTransaction = g.Average(t => t.Quantity)
-                })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-            
-            // Calculate total transactions for percentage
-            int totalTransactions = transactions.Count;
-            
-            var result = new List<dynamic>();
-            
-            // Add data for each type
-            foreach (var stat in transactionStats)
-            {
-                double percentOfTotal = totalTransactions > 0 ?
-                    (double)stat.Count / totalTransactions * 100 : 0;
+                var result = new List<dynamic>();
                 
-                result.Add(new
-                {
-                    TransactionType = stat.Type,
-                    Count = stat.Count,
-                    TotalQuantity = stat.TotalQuantity,
-                    PercentOfTotal = percentOfTotal,
-                    ProductsAffected = stat.ProductsAffected,
-                    AvgQuantityPerTransaction = stat.AvgQuantityPerTransaction
-                });
-            }
-            
-            // Add total summary
-            if (transactionStats.Count > 0)
-            {
-                int totalCount = transactionStats.Sum(s => s.Count);
-                int totalQuantity = transactionStats.Sum(s => s.TotalQuantity);
-                int distinctProducts = transactions.Select(t => t.ProductID).Distinct().Count();
-                double avgQuantity = transactions.Count > 0 ? transactions.Average(t => t.Quantity) : 0;
+                // Get transactions within date range
+                var query = _context.InventoryTransactions
+                    .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate);
                 
-                result.Add(new
+                // Apply transaction type filter if specified and not "All"
+                if (!string.IsNullOrEmpty(transactionType) && transactionType != "All")
                 {
-                    TransactionType = "TOTAL",
-                    Count = totalCount,
-                    TotalQuantity = totalQuantity,
-                    PercentOfTotal = 100.0,
-                    ProductsAffected = distinctProducts,
-                    AvgQuantityPerTransaction = avgQuantity
-                });
+                    query = query.Where(t => t.TransactionType == transactionType);
+                }
+                
+                // Execute the query and materialize the results
+                var transactions = query.ToList();
+                
+                if (!transactions.Any())
+                    return result; // Return empty list if no transactions
+                
+                // Group by transaction type
+                var transactionGroups = transactions
+                    .GroupBy(t => t.TransactionType)
+                    .Select(g => new {
+                        Type = g.Key,
+                        Count = g.Count(),
+                        TotalQuantity = g.Sum(t => t.Quantity),
+                        ProductsAffected = g.Select(t => t.ProductID).Distinct().Count(),
+                        AvgQuantityPerTransaction = g.Average(t => t.Quantity)
+                    })
+                    .OrderByDescending(g => g.Count)
+                    .ToList();
+                
+                // Calculate total for percentages
+                int totalTransactions = transactions.Count;
+                
+                // Add each transaction type group
+                foreach (var group in transactionGroups)
+                {
+                    double percentOfTotal = totalTransactions > 0 ?
+                        (double)group.Count / totalTransactions * 100 : 0;
+                    
+                    result.Add(new {
+                        TransactionType = group.Type,
+                        Count = group.Count,
+                        TotalQuantity = group.TotalQuantity,
+                        PercentOfTotal = percentOfTotal,
+                        ProductsAffected = group.ProductsAffected,
+                        AvgQuantityPerTransaction = group.AvgQuantityPerTransaction
+                    });
+                }
+                
+                // Add total summary row
+                if (transactionGroups.Any())
+                {
+                    int totalCount = transactionGroups.Sum(g => g.Count);
+                    int totalQuantity = transactions.Sum(t => t.Quantity);
+                    int distinctProducts = transactions.Select(t => t.ProductID).Distinct().Count();
+                    double avgQuantity = transactions.Count > 0 ? 
+                        transactions.Average(t => t.Quantity) : 0;
+                    
+                    result.Add(new {
+                        TransactionType = "TOTAL",
+                        Count = totalCount,
+                        TotalQuantity = totalQuantity,
+                        PercentOfTotal = 100.0,
+                        ProductsAffected = distinctProducts,
+                        AvgQuantityPerTransaction = avgQuantity
+                    });
+                }
+                
+                return result;
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetTransactionSummary: {ex.Message}");
+                return new List<dynamic>(); // Return empty list on error
+            }
         }
         
         /// <summary>
@@ -2120,51 +2321,69 @@ namespace HearingClinicManagementSystem.Data
         /// <returns>List of transactions with product and user details</returns>
         public List<dynamic> GetTransactionHistory(DateTime startDate, DateTime endDate, string transactionType = null, int limit = 100)
         {
-            // Get transactions within date range
-            var query = _context.InventoryTransactions
-                .Include(t => t.Product)
-                .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate);
-                
-            // Apply transaction type filter if specified
-            if (!string.IsNullOrEmpty(transactionType) && transactionType != "All")
+            try
             {
-                query = query.Where(t => t.TransactionType == transactionType);
-            }
-            
-            // Get most recent transactions with limit
-            var transactions = query
-                .OrderByDescending(t => t.TransactionDate)
-                .Take(limit)
-                .ToList();
+                var result = new List<dynamic>();
                 
-            var result = new List<dynamic>();
-            
-            foreach (var transaction in transactions)
-            {
-                // Get product info
-                string productName = transaction.Product != null ?
-                    $"{transaction.Product.Manufacturer} {transaction.Product.Model}" :
-                    $"Product #{transaction.ProductID}";
-                    
-                // Get user who processed the transaction
-                var user = _context.Users.FirstOrDefault(u => u.UserID == transaction.ProcessedBy);
-                string processedBy = user != null ?
-                    $"{user.FirstName} {user.LastName}" :
-                    $"User #{transaction.ProcessedBy}";
-                    
-                result.Add(new
+                // Get transactions within date range
+                var query = _context.InventoryTransactions
+                    .Include(t => t.Product)
+                    .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate);
+                
+                // Apply transaction type filter if specified and not "All"
+                if (!string.IsNullOrEmpty(transactionType) && transactionType != "All")
                 {
-                    TransactionID = transaction.TransactionID,
-                    TransactionDate = transaction.TransactionDate,
-                    TransactionType = transaction.TransactionType,
-                    ProductID = transaction.ProductID,
-                    ProductName = productName,
-                    Quantity = transaction.Quantity,
-                    ProcessedBy = processedBy
-                });
+                    query = query.Where(t => t.TransactionType == transactionType);
+                }
+                
+                // Get limited number of transactions ordered by date
+                var transactions = query
+                    .OrderByDescending(t => t.TransactionDate)
+                    .Take(limit)
+                    .ToList();
+                
+                if (!transactions.Any())
+                    return result; // Return empty list if no transactions
+                
+                // Process each transaction
+                foreach (var transaction in transactions)
+                {
+                    // Get product name safely
+                    string productName = "Unknown Product";
+                    if (transaction.Product != null)
+                    {
+                        productName = $"{transaction.Product.Manufacturer} {transaction.Product.Model}";
+                    }
+                    
+                    // Get user who processed the transaction
+                    string processedBy = "Unknown User";
+                    if (transaction.ProcessedBy > 0)
+                    {
+                        var user = _context.Users.Find(transaction.ProcessedBy);
+                        if (user != null)
+                        {
+                            processedBy = $"{user.FirstName} {user.LastName}";
+                        }
+                    }
+                    
+                    result.Add(new {
+                        TransactionID = transaction.TransactionID,
+                        TransactionDate = transaction.TransactionDate,
+                        TransactionType = transaction.TransactionType,
+                        ProductID = transaction.ProductID,
+                        ProductName = productName,
+                        Quantity = transaction.Quantity,
+                        ProcessedBy = processedBy
+                    });
+                }
+                
+                return result;
             }
-            
-            return result;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetTransactionHistory: {ex.Message}");
+                return new List<dynamic>(); // Return empty list on error
+            }
         }
         #endregion
 

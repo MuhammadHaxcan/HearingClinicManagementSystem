@@ -481,6 +481,17 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
         {
             try
             {
+                // Make sure the date range is properly initialized before loading data
+                if (startDate > endDate)
+                {
+                    startDate = DateTime.Now.AddMonths(-3);
+                    endDate = DateTime.Now;
+                    
+                    // Update UI date controls
+                    dtpStartDate.Value = startDate;
+                    dtpEndDate.Value = endDate;
+                }
+                
                 LoadSalesOverviewData();
                 LoadTransactionAnalysisData();
                 
@@ -488,7 +499,7 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             }
             catch (Exception ex)
             {
-                UIService.ShowError($"Error loading report data: {ex.Message}");
+                UIService.ShowError($"Error loading report data: {ex.Message}\n\nPlease check the repository connection.");
             }
         }
 
@@ -507,73 +518,147 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
 
         private void LoadSummaryStats()
         {
-            // Get inventory summary statistics from repository
-            var stats = repository.GetInventorySummaryStats();
-            
-            // Update UI with the statistics
-            lblTotalOrders.Text = stats.TotalOrders.ToString();
-            lblTotalSales.Text = stats.TotalSales.ToString("C2");
-            lblAverageOrderValue.Text = stats.AverageOrderValue.ToString("C2");
-            
-            if (stats.MostPopularProductCount > 0)
+            try
             {
-                lblMostPopularProduct.Text = $"{stats.MostPopularProduct} ({stats.MostPopularProductCount} units)";
+                // Get inventory summary statistics from repository
+                var stats = repository.GetInventorySummaryStats();
+                
+                if (stats == null)
+                {
+                    // Set default values if no stats are returned
+                    lblTotalOrders.Text = "0";
+                    lblTotalSales.Text = "$0.00";
+                    lblAverageOrderValue.Text = "$0.00";
+                    lblMostPopularProduct.Text = "No data available";
+                    lblLowStockCount.Text = "0 items";
+                    lblTotalProducts.Text = "0";
+                    return;
+                }
+                
+                // Safe retrieval of properties with defaults
+                int totalOrders = 0;
+                decimal totalSales = 0m;
+                decimal avgOrderValue = 0m;
+                string mostPopularProduct = "No data available";
+                int mostPopularCount = 0;
+                int lowStockCount = 0;
+                int totalProducts = 0;
+                
+                try { totalOrders = stats.TotalOrders; } catch { }
+                try { totalSales = stats.TotalSales; } catch { }
+                try { avgOrderValue = stats.AverageOrderValue; } catch { }
+                try { mostPopularProduct = stats.MostPopularProduct?.ToString() ?? "No data available"; } catch { }
+                try { mostPopularCount = stats.MostPopularProductCount; } catch { }
+                try { lowStockCount = stats.LowStockCount; } catch { }
+                try { totalProducts = stats.TotalProducts; } catch { }
+                
+                // Update UI with the statistics
+                lblTotalOrders.Text = totalOrders.ToString();
+                lblTotalSales.Text = totalSales.ToString("C2");
+                lblAverageOrderValue.Text = avgOrderValue.ToString("C2");
+                
+                if (mostPopularCount > 0)
+                {
+                    lblMostPopularProduct.Text = $"{mostPopularProduct} ({mostPopularCount} units)";
+                }
+                else
+                {
+                    lblMostPopularProduct.Text = "No data available";
+                }
+                
+                lblLowStockCount.Text = $"{lowStockCount} items";
+                lblTotalProducts.Text = totalProducts.ToString();
             }
-            else
+            catch (Exception ex)
             {
-                lblMostPopularProduct.Text = "No data available";
+                MessageBox.Show($"Error loading summary statistics: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                
+                // Set default values on error
+                lblTotalOrders.Text = "Error";
+                lblTotalSales.Text = "Error";
+                lblAverageOrderValue.Text = "Error";
+                lblMostPopularProduct.Text = "Error loading data";
+                lblLowStockCount.Text = "Error";
+                lblTotalProducts.Text = "Error";
             }
-            
-            lblLowStockCount.Text = $"{stats.LowStockCount} items";
-            lblTotalProducts.Text = stats.TotalProducts.ToString();
         }
 
         private void LoadTopSellingProductsGrid()
         {
-            // Configure grid columns
-            dgvTopSellingProducts.Columns.Clear();
-            dgvTopSellingProducts.Columns.Add("Rank", "Rank");
-            dgvTopSellingProducts.Columns.Add("ProductID", "ID");
-            dgvTopSellingProducts.Columns.Add("ProductName", "Product");
-            dgvTopSellingProducts.Columns.Add("Manufacturer", "Manufacturer");
-            dgvTopSellingProducts.Columns.Add("UnitsSold", "Units Sold");
-            dgvTopSellingProducts.Columns.Add("TotalSales", "Total Sales");
-            dgvTopSellingProducts.Columns.Add("PercentOfSales", "% of Sales");
-            
-            // Set column properties
-            dgvTopSellingProducts.Columns["Rank"].Width = 40;
-            dgvTopSellingProducts.Columns["ProductID"].Width = 40;
-            dgvTopSellingProducts.Columns["ProductName"].FillWeight = 80;
-            dgvTopSellingProducts.Columns["Manufacturer"].FillWeight = 80;
-            dgvTopSellingProducts.Columns["UnitsSold"].Width = 80;
-            dgvTopSellingProducts.Columns["TotalSales"].Width = 100;
-            dgvTopSellingProducts.Columns["PercentOfSales"].Width = 80;
-            
-            // Get top selling products from repository
-            var topProducts = repository.GetTopSellingProducts(15);
-            
-            // Add data rows
-            for (int i = 0; i < topProducts.Count; i++)
+            try
             {
-                var product = topProducts[i];
+                // Configure grid columns
+                dgvTopSellingProducts.Columns.Clear();
+                dgvTopSellingProducts.Columns.Add("Rank", "Rank");
+                dgvTopSellingProducts.Columns.Add("ProductID", "ID");
+                dgvTopSellingProducts.Columns.Add("ProductName", "Product");
+                dgvTopSellingProducts.Columns.Add("Manufacturer", "Manufacturer");
+                dgvTopSellingProducts.Columns.Add("UnitsSold", "Units Sold");
+                dgvTopSellingProducts.Columns.Add("TotalSales", "Total Sales");
+                dgvTopSellingProducts.Columns.Add("PercentOfSales", "% of Sales");
                 
-                dgvTopSellingProducts.Rows.Add(
-                    product.Rank.ToString(),
-                    product.ProductID.ToString(),
-                    product.ProductName,
-                    product.Manufacturer,
-                    product.UnitsSold.ToString("N0"),
-                    product.TotalSales.ToString("C2"),
-                    product.PercentOfSales.ToString("F1") + "%"
-                );
+                // Set column properties
+                dgvTopSellingProducts.Columns["Rank"].Width = 40;
+                dgvTopSellingProducts.Columns["ProductID"].Width = 40;
+                dgvTopSellingProducts.Columns["ProductName"].FillWeight = 80;
+                dgvTopSellingProducts.Columns["Manufacturer"].FillWeight = 80;
+                dgvTopSellingProducts.Columns["UnitsSold"].Width = 80;
+                dgvTopSellingProducts.Columns["TotalSales"].Width = 100;
+                dgvTopSellingProducts.Columns["PercentOfSales"].Width = 80;
                 
-                // Highlight top 3
-                if (i < 3)
+                // Get top selling products from repository
+                var topProducts = repository.GetTopSellingProducts(15);
+                
+                if (topProducts == null || topProducts.Count == 0)
                 {
-                    dgvTopSellingProducts.Rows[i].DefaultCellStyle.Font = new Font(dgvTopSellingProducts.Font, FontStyle.Bold);
-                    if (i == 0)
-                        dgvTopSellingProducts.Rows[i].DefaultCellStyle.ForeColor = Color.FromArgb(40, 167, 69);
+                    dgvTopSellingProducts.Rows.Add("-", "-", "No sales data available", "-", "0", "$0.00", "0%");
+                    return;
                 }
+                
+                // Add data rows
+                for (int i = 0; i < topProducts.Count; i++)
+                {
+                    var product = topProducts[i];
+                    
+                    // Safely extract properties
+                    int rank = i + 1;
+                    int productId = 0;
+                    string productName = "Unknown";
+                    string manufacturer = "Unknown";
+                    int unitsSold = 0;
+                    decimal totalSales = 0m;
+                    decimal percentOfSales = 0m;
+                    
+                    try { rank = product.Rank; } catch { }
+                    try { productId = product.ProductID; } catch { }
+                    try { productName = product.ProductName?.ToString() ?? "Unknown"; } catch { }
+                    try { manufacturer = product.Manufacturer?.ToString() ?? "Unknown"; } catch { }
+                    try { unitsSold = product.UnitsSold; } catch { }
+                    try { totalSales = product.TotalSales; } catch { }
+                    try { percentOfSales = product.PercentOfSales; } catch { }
+                    
+                    dgvTopSellingProducts.Rows.Add(
+                        rank.ToString(),
+                        productId.ToString(),
+                        productName,
+                        manufacturer,
+                        unitsSold.ToString("N0"),
+                        totalSales.ToString("C2"),
+                        percentOfSales.ToString("F1") + "%"
+                    );
+                    
+                    // Highlight top 3
+                    if (i < 3)
+                    {
+                        dgvTopSellingProducts.Rows[i].DefaultCellStyle.Font = new Font(dgvTopSellingProducts.Font, FontStyle.Bold);
+                        if (i == 0)
+                            dgvTopSellingProducts.Rows[i].DefaultCellStyle.ForeColor = Color.FromArgb(40, 167, 69);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading top selling products: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -604,41 +689,61 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
                 // Add data rows
                 foreach (var product in lowStockProducts)
                 {
+                    string lastRestockedText = "Never";
+                    
                     // Safely handle the LastRestocked property which might be null
-                    string lastRestocked;
                     try
                     {
-                        lastRestocked = product.LastRestocked.HasValue ? 
-                            product.LastRestocked.Value.ToShortDateString() : "Never";
+                        if (product.GetType().GetProperty("LastRestocked") != null)
+                        {
+                            var lastRestocked = product.LastRestocked;
+                            if (lastRestocked != null)
+                            {
+                                lastRestockedText = Convert.ToDateTime(lastRestocked).ToShortDateString();
+                            }
+                        }
                     }
                     catch
                     {
-                        // If there's any issue accessing LastRestocked, default to "Never"
-                        lastRestocked = "Never";
+                        // If there's any issue accessing LastRestocked, keep the default "Never"
                     }
                     
-                    // Create the row after checking the LastRestocked property
+                    // Safely get other properties with defaults if missing
+                    int productId = 0;
+                    string productName = "Unknown";
+                    string manufacturer = "Unknown";
+                    int currentStock = 0;
+                    string status = "Unknown";
+                    decimal price = 0m;
+                    
+                    try { productId = product.ProductID; } catch { }
+                    try { productName = product.ProductName?.ToString() ?? "Unknown"; } catch { }
+                    try { manufacturer = product.Manufacturer?.ToString() ?? "Unknown"; } catch { }
+                    try { currentStock = product.CurrentStock; } catch { }
+                    try { status = product.Status?.ToString() ?? "Unknown"; } catch { }
+                    try { price = product.Price; } catch { }
+                    
+                    // Create the row with safely extracted values
                     var row = dgvLowStockProducts.Rows.Add(
-                        product.ProductID.ToString(),
-                        product.ProductName?.ToString() ?? "Unknown",
-                        product.Manufacturer?.ToString() ?? "Unknown",
-                        product.CurrentStock.ToString(),
-                        product.Status?.ToString() ?? "Unknown",
-                        product.Price.ToString("C2"),
-                        lastRestocked
+                        productId.ToString(),
+                        productName,
+                        manufacturer,
+                        currentStock.ToString(),
+                        status,
+                        price.ToString("C2"),
+                        lastRestockedText
                     );
                     
                     // Color code based on stock level - check if CurrentStock property exists
                     try
                     {
-                        int stockLevel = product.CurrentStock;
-                        if (stockLevel <= 0)
+                        if (currentStock <= 0)
                         {
                             dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
                             dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(220, 53, 69);
                             dgvLowStockProducts.Rows[row].Cells["Status"].Style.Font = new Font(dgvLowStockProducts.Font, FontStyle.Bold);
                         }
-                        else if (stockLevel <= 5)
+                        else if (currentStock <= 5)
                         {
                             dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
                             dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(255, 193, 7);
@@ -647,7 +752,7 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
                     }
                     catch
                     {
-                        // If there's an issue accessing CurrentStock, don't apply any styling
+                        // If there's an issue with styling, just continue
                     }
                 }
             }
@@ -659,103 +764,151 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
 
         private void LoadTransactionSummary()
         {
-            // Configure grid columns
-            dgvTransactionSummary.Columns.Clear();
-            dgvTransactionSummary.Columns.Add("TransactionType", "Transaction Type");
-            dgvTransactionSummary.Columns.Add("Count", "Count");
-            dgvTransactionSummary.Columns.Add("TotalQuantity", "Total Quantity");
-            dgvTransactionSummary.Columns.Add("PercentOfTotal", "% of Total");
-            dgvTransactionSummary.Columns.Add("ProductsAffected", "Products Affected");
-            dgvTransactionSummary.Columns.Add("AvgQuantityPerTransaction", "Avg Qty/Transaction");
-            
-            try {
+            try
+            {
+                // Configure grid columns
+                dgvTransactionSummary.Columns.Clear();
+                dgvTransactionSummary.Columns.Add("TransactionType", "Transaction Type");
+                dgvTransactionSummary.Columns.Add("Count", "Count");
+                dgvTransactionSummary.Columns.Add("TotalQuantity", "Total Quantity");
+                dgvTransactionSummary.Columns.Add("PercentOfTotal", "% of Total");
+                dgvTransactionSummary.Columns.Add("ProductsAffected", "Products Affected");
+                dgvTransactionSummary.Columns.Add("AvgQuantityPerTransaction", "Avg Qty/Transaction");
+                
                 // Get selected transaction type
-                string selectedType = cmbTransactionType.SelectedItem.ToString();
+                string selectedType = cmbTransactionType.SelectedItem?.ToString() ?? "All";
                 
                 // Get transaction summary from repository
                 var transactionStats = repository.GetTransactionSummary(startDate, endDate, selectedType);
                 
+                if (transactionStats == null || transactionStats.Count == 0)
+                {
+                    dgvTransactionSummary.Rows.Add("No Data", "0", "0", "0%", "0", "0");
+                    return;
+                }
+                
                 // Add data rows
                 foreach (var stat in transactionStats)
                 {
+                    string transactionType = "Unknown";
+                    int count = 0;
+                    int totalQuantity = 0;
+                    double percentOfTotal = 0;
+                    int productsAffected = 0;
+                    double avgQuantity = 0;
+                    
+                    try { transactionType = stat.TransactionType?.ToString() ?? "Unknown"; } catch { }
+                    try { count = stat.Count; } catch { }
+                    try { totalQuantity = stat.TotalQuantity; } catch { }
+                    try { percentOfTotal = stat.PercentOfTotal; } catch { }
+                    try { productsAffected = stat.ProductsAffected; } catch { }
+                    try { avgQuantity = stat.AvgQuantityPerTransaction; } catch { }
+                    
                     var row = dgvTransactionSummary.Rows.Add(
-                        stat.TransactionType,
-                        stat.Count.ToString("N0"),
-                        stat.TotalQuantity.ToString("N0"),
-                        stat.PercentOfTotal.ToString("F1") + "%",
-                        stat.ProductsAffected.ToString("N0"),
-                        stat.AvgQuantityPerTransaction.ToString("F1")
+                        transactionType,
+                        count.ToString("N0"),
+                        totalQuantity.ToString("N0"),
+                        percentOfTotal.ToString("F1") + "%",
+                        productsAffected.ToString("N0"),
+                        avgQuantity.ToString("F1")
                     );
                     
                     // Highlight the total row
-                    if (stat.TransactionType == "TOTAL")
+                    if (transactionType == "TOTAL")
                     {
                         dgvTransactionSummary.Rows[row].DefaultCellStyle.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
                         dgvTransactionSummary.Rows[row].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
                     }
                     // Color code based on transaction type
-                    else if (stat.TransactionType == "Sale")
+                    else if (transactionType == "Sale")
                     {
                         dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
                         dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
                     }
-                    else if (stat.TransactionType == "Restock")
+                    else if (transactionType == "Restock")
                     {
                         dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
                         dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
                     }
                 }
-            } catch (Exception ex) {
-                MessageBox.Show($"Error loading transaction summary: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading transaction summary: {ex.Message}\n\nStack Trace: {ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         private void LoadTransactionsGrid()
         {
-            // Configure grid columns
-            dgvTransactions.Columns.Clear();
-            dgvTransactions.Columns.Add("TransactionID", "ID");
-            dgvTransactions.Columns.Add("TransactionDate", "Date");
-            dgvTransactions.Columns.Add("TransactionType", "Type");
-            dgvTransactions.Columns.Add("ProductID", "Product ID");
-            dgvTransactions.Columns.Add("ProductName", "Product");
-            dgvTransactions.Columns.Add("Quantity", "Quantity");
-            dgvTransactions.Columns.Add("ProcessedBy", "Processed By");
-            
-            try {
+            try
+            {
+                // Configure grid columns
+                dgvTransactions.Columns.Clear();
+                dgvTransactions.Columns.Add("TransactionID", "ID");
+                dgvTransactions.Columns.Add("TransactionDate", "Date");
+                dgvTransactions.Columns.Add("TransactionType", "Type");
+                dgvTransactions.Columns.Add("ProductID", "Product ID");
+                dgvTransactions.Columns.Add("ProductName", "Product");
+                dgvTransactions.Columns.Add("Quantity", "Quantity");
+                dgvTransactions.Columns.Add("ProcessedBy", "Processed By");
+                
                 // Get selected transaction type
-                string selectedType = cmbTransactionType.SelectedItem.ToString();
+                string selectedType = cmbTransactionType.SelectedItem?.ToString() ?? "All";
                 
                 // Get transactions from repository
                 var transactions = repository.GetTransactionHistory(startDate, endDate, selectedType, 100);
                 
+                if (transactions == null || transactions.Count == 0)
+                {
+                    dgvTransactions.Rows.Add("-", "-", "No transactions found", "-", "-", "0", "-");
+                    return;
+                }
+                
                 // Add data rows
                 foreach (var transaction in transactions)
                 {
+                    int transactionId = 0;
+                    DateTime transactionDate = DateTime.Now;
+                    string transactionType = "Unknown";
+                    int productId = 0;
+                    string productName = "Unknown";
+                    int quantity = 0;
+                    string processedBy = "Unknown";
+                    
+                    try { transactionId = transaction.TransactionID; } catch { }
+                    try { transactionDate = transaction.TransactionDate; } catch { }
+                    try { transactionType = transaction.TransactionType?.ToString() ?? "Unknown"; } catch { }
+                    try { productId = transaction.ProductID; } catch { }
+                    try { productName = transaction.ProductName?.ToString() ?? "Unknown"; } catch { }
+                    try { quantity = transaction.Quantity; } catch { }
+                    try { processedBy = transaction.ProcessedBy?.ToString() ?? "Unknown"; } catch { }
+                    
                     var row = dgvTransactions.Rows.Add(
-                        transaction.TransactionID.ToString(),
-                        transaction.TransactionDate.ToString("g"),
-                        transaction.TransactionType,
-                        transaction.ProductID.ToString(),
-                        transaction.ProductName,
-                        transaction.Quantity.ToString("N0"),
-                        transaction.ProcessedBy
+                        transactionId.ToString(),
+                        transactionDate.ToString("g"),
+                        transactionType,
+                        productId.ToString(),
+                        productName,
+                        quantity.ToString("N0"),
+                        processedBy
                     );
                     
                     // Color-code by transaction type
-                    if (transaction.TransactionType == "Sale")
+                    if (transactionType == "Sale")
                     {
                         dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
                         dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
                     }
-                    else if (transaction.TransactionType == "Restock")
+                    else if (transactionType == "Restock")
                     {
                         dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
                         dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
                     }
                 }
-            } catch (Exception ex) {
-                MessageBox.Show($"Error loading transaction history: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading transaction history: {ex.Message}\n\nStack Trace: {ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         #endregion
