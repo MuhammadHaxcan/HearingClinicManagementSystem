@@ -38,10 +38,14 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         private Panel rightAudiogramPanel;
         private ComboBox cmbHearingTests; // For selecting different hearing tests
         private Label lblHearingTestSelection; // Label for the hearing test selection
+
+        // Repository reference
+        private HearingClinicRepository repository;
         #endregion
 
         public AudiogramViewForm(int? appointmentId = null, int? patientId = null)
         {
+            repository = HearingClinicRepository.Instance;
             selectedAppointmentId = appointmentId;
             selectedPatientId = patientId;
             audiogramData = new List<AudiogramData>();
@@ -666,11 +670,9 @@ namespace HearingClinicManagementSystem.UI.Audiologist
                 return;
 
             dynamic appointmentItem = selectedItem;
-            var recordInfo = appointmentItem.RecordInfo;
-
-            selectedAppointmentId = recordInfo.AppointmentId;
-            selectedPatientId = recordInfo.PatientId;
-            selectedMedicalRecordId = recordInfo.MedicalRecordId;
+            selectedAppointmentId = appointmentItem.AppointmentId;
+            selectedPatientId = appointmentItem.PatientId;
+            selectedMedicalRecordId = appointmentItem.MedicalRecordId;
 
             // Load patient info
             LoadPatientInfo(selectedPatientId.Value);
@@ -680,9 +682,8 @@ namespace HearingClinicManagementSystem.UI.Audiologist
 
             // Load diagnosis info
             LoadDiagnosisInfo(selectedMedicalRecordId.Value);
-            
-            // Load clinical notes
-            LoadClinicalNotes(selectedMedicalRecordId.Value);
+
+            // Clinical notes will be loaded when a hearing test is selected
         }
 
         private void CmbHearingTests_SelectedIndexChanged(object sender, EventArgs e)
@@ -695,10 +696,10 @@ namespace HearingClinicManagementSystem.UI.Audiologist
 
             // Load the audiogram data for the selected test
             LoadAudiogramData(selectedTestId.Value);
-            
+
             // Load test notes for the selected hearing test
             LoadTestNotesForHearingTest(selectedTestId.Value);
-            
+
             // Refresh both audiogram panels
             RefreshAudiogramPanels();
         }
@@ -707,21 +708,15 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         {
             if (!selectedTestId.HasValue)
             {
-                //UIService.ShowWarning("Please select a hearing test first.");
+                UIService.ShowWarning("Please select a hearing test first.");
                 return;
             }
 
             try
             {
-                // Find the hearing test
-                var hearingTest = StaticDataProvider.HearingTests
-                    .FirstOrDefault(t => t.TestID == selectedTestId.Value);
-
-                if (hearingTest != null)
+                bool result = repository.UpdateHearingTestNotes(selectedTestId.Value, txtClinicalNotes.Text);
+                if (result)
                 {
-                    // Update the test notes directly
-                    hearingTest.TestNotes = txtClinicalNotes.Text;
-
                     UIService.ShowSuccess("Test notes saved successfully.");
                 }
                 else
@@ -732,6 +727,238 @@ namespace HearingClinicManagementSystem.UI.Audiologist
             catch (Exception ex)
             {
                 UIService.ShowError($"Error saving test notes: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region Helper Methods
+        private void LoadAppointmentsForDate(DateTime date)
+        {
+            try
+            {
+                // Clear and reset the appointments dropdown
+                cmbAppointments.DataSource = null;
+                cmbAppointments.Items.Clear();
+
+                // Hide hearing test selection dropdown
+                cmbHearingTests.Visible = false;
+                lblHearingTestSelection.Visible = false;
+
+                // Get current audiologist
+                var currentUser = AuthService.CurrentUser;
+                var audiologist = repository.GetAudiologistByUserId(currentUser.UserID);
+
+                if (audiologist == null)
+                {
+                    UIService.ShowError("Could not identify the current audiologist.");
+                    return;
+                }
+
+                // Get appointments with medical records from repository
+                var appointmentsWithRecords = repository.GetAudiologistAppointmentsWithRecordsForDate(audiologist.AudiologistID, date);
+
+                if (appointmentsWithRecords.Count == 0)
+                {
+                    // Add a dummy item to indicate no appointments
+                    var noAppointmentsItem = new
+                    {
+                        DisplayName = "No appointments with medical records for this date",
+                        IsEmpty = true
+                    };
+                    cmbAppointments.Items.Add(noAppointmentsItem);
+                    cmbAppointments.DisplayMember = "DisplayName";
+                    cmbAppointments.Enabled = false;
+                    cmbAppointments.SelectedIndex = 0;
+                    return;
+                }
+
+                // Create appointment items with formatted display names
+                var appointmentItems = appointmentsWithRecords.Select(appt =>
+                {
+                    return new
+                    {
+                        AppointmentId = appt.AppointmentId,
+                        PatientId = appt.PatientId,
+                        MedicalRecordId = appt.MedicalRecordId,
+                        DisplayName = $"{appt.Time.ToShortTimeString()} - {appt.PatientName} - Record #{appt.MedicalRecordId}"
+                    };
+                }).ToList();
+
+                // Set up combobox
+                cmbAppointments.DisplayMember = "DisplayName";
+                cmbAppointments.ValueMember = "AppointmentId";
+                cmbAppointments.DataSource = appointmentItems;
+                cmbAppointments.Enabled = true;
+
+                // If we have appointments, select the first one by default
+                if (cmbAppointments.Items.Count > 0)
+                {
+                    cmbAppointments.SelectedIndex = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error loading appointments: {ex.Message}");
+            }
+        }
+
+        private void LoadPatientInfo(int patientId)
+        {
+            try
+            {
+                var patientInfo = repository.GetPatientInfoForAudiogram(patientId);
+                if (patientInfo != null)
+                {
+                    lblPatientInfo.Text = $"Patient: {patientInfo.PatientName} | Age: {patientInfo.Age}";
+                }
+                else
+                {
+                    lblPatientInfo.Text = "Patient information not available";
+                }
+            }
+            catch (Exception ex)
+            {
+                lblPatientInfo.Text = "Error loading patient information";
+                UIService.ShowError($"Error loading patient information: {ex.Message}");
+            }
+        }
+
+        private void LoadAudiogramData(int testId)
+        {
+            try
+            {
+                // Clear any previous data
+                audiogramData.Clear();
+
+                // Load audiogram data for the selected test
+                var data = repository.GetAudiogramDataForTest(testId);
+
+                if (data.Any())
+                {
+                    audiogramData.AddRange(data);
+                }
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error loading audiogram data: {ex.Message}");
+            }
+        }
+
+        private void LoadDiagnosisInfo(int medicalRecordId)
+        {
+            try
+            {
+                string diagnosis = repository.GetDiagnosisForMedicalRecord(medicalRecordId);
+
+                if (!string.IsNullOrEmpty(diagnosis))
+                {
+                    // Try to parse the diagnosis format: "Right ear: X. Left ear: Y."
+                    int rightEarIndex = diagnosis.IndexOf("Right ear:");
+                    int leftEarIndex = diagnosis.IndexOf("Left ear:");
+
+                    if (rightEarIndex >= 0 && leftEarIndex > rightEarIndex)
+                    {
+                        string rightEarDiagnosis = diagnosis.Substring(rightEarIndex, leftEarIndex - rightEarIndex).Trim();
+                        string leftEarDiagnosis = diagnosis.Substring(leftEarIndex).Trim();
+
+                        lblRightEarDiagnosis.Text = rightEarDiagnosis;
+                        lblLeftEarDiagnosis.Text = leftEarDiagnosis;
+                    }
+                    else
+                    {
+                        lblRightEarDiagnosis.Text = "Right Ear: Diagnosis not available in expected format";
+                        lblLeftEarDiagnosis.Text = "Left Ear: Diagnosis not available in expected format";
+                    }
+                }
+                else
+                {
+                    lblRightEarDiagnosis.Text = "Right Ear: No diagnosis available";
+                    lblLeftEarDiagnosis.Text = "Left Ear: No diagnosis available";
+                }
+            }
+            catch (Exception ex)
+            {
+                lblRightEarDiagnosis.Text = "Right Ear: Error loading diagnosis";
+                lblLeftEarDiagnosis.Text = "Left Ear: Error loading diagnosis";
+                UIService.ShowError($"Error loading diagnosis: {ex.Message}");
+            }
+        }
+
+        private void LoadTestNotesForHearingTest(int testId)
+        {
+            try
+            {
+                // Get all hearing tests to find the one with this ID
+                var tests = repository.GetHearingTestsForMedicalRecord(selectedMedicalRecordId.Value);
+                var hearingTest = tests.FirstOrDefault(t => t.TestID == testId);
+
+                if (hearingTest != null)
+                {
+                    // Load the test notes
+                    txtClinicalNotes.Text = hearingTest.TestNotes ?? "";
+                }
+                else
+                {
+                    txtClinicalNotes.Text = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                txtClinicalNotes.Text = "";
+                UIService.ShowError($"Error loading test notes: {ex.Message}");
+            }
+        }
+
+        private void LoadHearingTestsForMedicalRecord(int medicalRecordId)
+        {
+            try
+            {
+                // Clear the hearing tests dropdown
+                cmbHearingTests.DataSource = null;
+                cmbHearingTests.Items.Clear();
+
+                // Get all hearing tests for this medical record
+                var hearingTests = repository.GetHearingTestsForMedicalRecord(medicalRecordId);
+
+                if (hearingTests.Count == 0)
+                {
+                    cmbHearingTests.Visible = false;
+                    lblHearingTestSelection.Visible = false;
+
+                    // Clear the audiogram data since there's no test
+                    audiogramData.Clear();
+                    RefreshAudiogramPanels();
+                    return;
+                }
+
+                // Create test items for the dropdown
+                var testItems = hearingTests.Select(test => new
+                {
+                    TestId = test.TestID,
+                    DisplayName = $"{test.TestDate.ToShortDateString()} - {test.TestType}"
+                }).ToList();
+
+                // Setup the hearing tests dropdown
+                cmbHearingTests.DisplayMember = "DisplayName";
+                cmbHearingTests.ValueMember = "TestId";
+                cmbHearingTests.DataSource = testItems;
+
+                // Show the hearing tests dropdown
+                cmbHearingTests.Visible = true;
+                lblHearingTestSelection.Visible = true;
+
+                // Select the first test by default
+                if (cmbHearingTests.Items.Count > 0)
+                {
+                    cmbHearingTests.SelectedIndex = 0;
+                    // The SelectedIndexChanged event will handle loading the data
+                }
+            }
+            catch (Exception ex)
+            {
+                cmbHearingTests.Visible = false;
+                lblHearingTestSelection.Visible = false;
+                UIService.ShowError($"Error loading hearing tests: {ex.Message}");
             }
         }
 
@@ -748,249 +975,19 @@ namespace HearingClinicManagementSystem.UI.Audiologist
                 if (item.GetType().GetProperty("IsEmpty") != null)
                     continue;
 
-                var recordInfo = item.RecordInfo;
-
                 // Match by appointment ID
-                if (appointmentId.HasValue && recordInfo.AppointmentId == appointmentId.Value)
+                if (appointmentId.HasValue && item.AppointmentId == appointmentId.Value)
                 {
                     cmbAppointments.SelectedIndex = i;
                     return;
                 }
 
                 // Match by patient ID (if no appointment ID match was found)
-                if (patientId.HasValue && recordInfo.PatientId == patientId.Value)
+                if (patientId.HasValue && item.PatientId == patientId.Value)
                 {
                     cmbAppointments.SelectedIndex = i;
                     return;
                 }
-            }
-        }
-        #endregion
-
-        #region Helper Methods
-        private void LoadAppointmentsForDate(DateTime date)
-        {
-            // Clear and reset the appointments dropdown
-            cmbAppointments.DataSource = null;
-            cmbAppointments.Items.Clear();
-
-            // Hide hearing test selection dropdown
-            cmbHearingTests.Visible = false;
-            lblHearingTestSelection.Visible = false;
-
-            // Get current audiologist
-            var currentUser = AuthService.CurrentUser;
-            var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.UserID == currentUser.UserID);
-
-            if (audiologist == null)
-            {
-                UIService.ShowError("Could not identify the current audiologist.");
-                return;
-            }
-
-            // Find appointments with associated medical records
-            var appointmentsWithRecords = (from appointment in StaticDataProvider.Appointments
-                                          join record in StaticDataProvider.MedicalRecords
-                                          on appointment.AppointmentID equals record.AppointmentID
-                                          where appointment.AudiologistID == audiologist.AudiologistID
-                                          && appointment.Date.Date == date.Date
-                                          && appointment.Status == "Confirmed" // Only confirmed appointments
-                                          select new
-                                          {
-                                              Appointment = appointment,
-                                              Record = record
-                                          }).Distinct().ToList(); // Ensure we don't duplicate appointments
-
-            if (appointmentsWithRecords.Count == 0)
-            {
-                // Add a dummy item to indicate no appointments
-                var noAppointmentsItem = new
-                {
-                    DisplayName = "No appointments with medical records for this date",
-                    IsEmpty = true
-                };
-                cmbAppointments.Items.Add(noAppointmentsItem);
-                cmbAppointments.DisplayMember = "DisplayName";
-                cmbAppointments.Enabled = false;
-                cmbAppointments.SelectedIndex = 0;
-                return;
-            }
-
-            // Create appointment items with formatted display names
-            var appointmentItems = appointmentsWithRecords.Select(item =>
-            {
-                // Find patient
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == item.Appointment.PatientID);
-                string patientName = patient != null && patient.User != null
-                    ? $"{patient.User.FirstName} {patient.User.LastName}"
-                    : "Unknown Patient";
-
-                return new
-                {
-                    RecordInfo = new
-                    {
-                        AppointmentId = item.Appointment.AppointmentID,
-                        PatientId = item.Appointment.PatientID,
-                        MedicalRecordId = item.Record.RecordID
-                    },
-                    DisplayName = $"{item.Appointment.Date.ToShortTimeString()} - {patientName} - Record #{item.Record.RecordID}"
-                };
-            }).ToList();
-
-            // Set up combobox
-            cmbAppointments.DisplayMember = "DisplayName";
-            cmbAppointments.ValueMember = "RecordInfo";
-            cmbAppointments.DataSource = appointmentItems;
-            cmbAppointments.Enabled = true;
-
-            // If we have appointments, select the first one by default
-            if (cmbAppointments.Items.Count > 0)
-            {
-                cmbAppointments.SelectedIndex = 0;
-            }
-        }
-
-        private void LoadPatientInfo(int patientId)
-        {
-            var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == patientId);
-            if (patient != null && patient.User != null)
-            {
-                // Calculate age
-                int age = DateTime.Now.Year - patient.DateOfBirth.Year;
-                if (DateTime.Now.DayOfYear < patient.DateOfBirth.DayOfYear)
-                    age--;
-
-
-                lblPatientInfo.Text = $"Patient: {patient.User.FirstName} {patient.User.LastName} | Age: {age} ";
-            }
-            else
-            {
-                lblPatientInfo.Text = "Patient information not available";
-            }
-        }
-
-        private void LoadAudiogramData(int testId)
-        {
-            // Clear any previous data
-            audiogramData.Clear();
-
-            // Load audiogram data for the selected test
-            var data = StaticDataProvider.AudiogramData
-                .Where(a => a.TestID == testId)
-                .ToList();
-
-            if (data.Any())
-            {
-                audiogramData.AddRange(data);
-            }
-        }
-
-        private void LoadDiagnosisInfo(int medicalRecordId)
-        {
-            var record = StaticDataProvider.MedicalRecords
-                .FirstOrDefault(r => r.RecordID == medicalRecordId);
-
-            if (record != null && !string.IsNullOrEmpty(record.Diagnosis))
-            {
-                // Try to parse the diagnosis format: "Right ear: X. Left ear: Y."
-                string diagnosis = record.Diagnosis;
-
-                int rightEarIndex = diagnosis.IndexOf("Right ear:");
-                int leftEarIndex = diagnosis.IndexOf("Left ear:");
-
-                if (rightEarIndex >= 0 && leftEarIndex > rightEarIndex)
-                {
-                    string rightEarDiagnosis = diagnosis.Substring(rightEarIndex, leftEarIndex - rightEarIndex).Trim();
-                    string leftEarDiagnosis = diagnosis.Substring(leftEarIndex).Trim();
-
-                    lblRightEarDiagnosis.Text = rightEarDiagnosis;
-                    lblLeftEarDiagnosis.Text = leftEarDiagnosis;
-                }
-                else
-                {
-                    lblRightEarDiagnosis.Text = "Right Ear: Diagnosis not available in expected format";
-                    lblLeftEarDiagnosis.Text = "Left Ear: Diagnosis not available in expected format";
-                }
-            }
-            else
-            {
-                lblRightEarDiagnosis.Text = "Right Ear: No diagnosis available";
-                lblLeftEarDiagnosis.Text = "Left Ear: No diagnosis available";
-            }
-        }
-
-        private void LoadClinicalNotes(int medicalRecordId)
-        {
-            // This method should only be called when first selecting an appointment
-            // The actual notes will be loaded by LoadTestNotesForHearingTest when a hearing test is selected
-            
-            // Clear the text by default until a test is selected
-            txtClinicalNotes.Text = "";
-            
-            // The notes will be loaded automatically when the hearing test is selected
-            // via CmbHearingTests_SelectedIndexChanged
-        }
-
-        private void LoadTestNotesForHearingTest(int testId)
-        {
-            // Find the hearing test
-            var hearingTest = StaticDataProvider.HearingTests.FirstOrDefault(t => t.TestID == testId);
-            
-            if (hearingTest != null)
-            {
-                // Load the test notes
-                txtClinicalNotes.Text = hearingTest.TestNotes ?? "";
-            }
-            else
-            {
-                txtClinicalNotes.Text = "";
-            }
-        }
-
-        private void LoadHearingTestsForMedicalRecord(int medicalRecordId)
-        {
-            // Clear the hearing tests dropdown
-            cmbHearingTests.DataSource = null;
-            cmbHearingTests.Items.Clear();
-
-            // Get all hearing tests for this medical record
-            var hearingTests = StaticDataProvider.HearingTests
-                .Where(t => t.RecordID == medicalRecordId)
-                .OrderByDescending(t => t.TestDate)
-                .ToList();
-
-            if (hearingTests.Count == 0)
-            {
-                cmbHearingTests.Visible = false;
-                lblHearingTestSelection.Visible = false;
-                
-                // Clear the audiogram data since there's no test
-                audiogramData.Clear();
-                RefreshAudiogramPanels();
-                return;
-            }
-
-            // Create test items for the dropdown
-            var testItems = hearingTests.Select(test => new
-            {
-                TestId = test.TestID,
-                DisplayName = $"{test.TestDate.ToShortDateString()} - {test.TestType}"
-            }).ToList();
-
-            // Setup the hearing tests dropdown
-            cmbHearingTests.DisplayMember = "DisplayName";
-            cmbHearingTests.ValueMember = "TestId";
-            cmbHearingTests.DataSource = testItems;
-            
-            // Show the hearing tests dropdown
-            cmbHearingTests.Visible = true;
-            lblHearingTestSelection.Visible = true;
-
-            // Select the first test by default
-            if (cmbHearingTests.Items.Count > 0)
-            {
-                cmbHearingTests.SelectedIndex = 0;
-                // The SelectedIndexChanged event will handle loading the data
             }
         }
 
@@ -998,7 +995,7 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         {
             if (leftAudiogramPanel != null)
                 leftAudiogramPanel.Invalidate();
-            
+
             if (rightAudiogramPanel != null)
                 rightAudiogramPanel.Invalidate();
         }

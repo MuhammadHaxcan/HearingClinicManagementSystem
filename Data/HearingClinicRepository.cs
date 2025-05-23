@@ -2168,6 +2168,463 @@ namespace HearingClinicManagementSystem.Data
         }
         #endregion
 
+        #region Audiogram and Hearing Tests Methods
+
+        /// <summary>
+        /// Gets audiologist's appointments with medical records for a specific date
+        /// </summary>
+        /// <param name="audiologistId">The audiologist ID</param>
+        /// <param name="date">The appointment date</param>
+        /// <returns>List of appointments with medical records</returns>
+        public List<dynamic> GetAudiologistAppointmentsWithRecordsForDate(int audiologistId, DateTime date)
+        {
+            // Create start and end date for the exact day
+            DateTime startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0);
+            DateTime endOfDay = new DateTime(date.Year, date.Month, date.Day, 23, 59, 59);
+            
+            // First get appointments for that day
+            var appointments = _context.Appointments
+                .Include(a => a.Patient.User)
+                .Where(a => a.AudiologistID == audiologistId &&
+                          a.Date >= startOfDay && a.Date <= endOfDay &&
+                          a.Status == "Confirmed")
+                .ToList();
+                
+            var appointmentsWithRecords = appointments
+                .Select(a => new 
+                {
+                    Appointment = a,
+                    MedicalRecord = _context.MedicalRecords
+                        .FirstOrDefault(mr => mr.AppointmentID == a.AppointmentID)
+                })
+                .Where(x => x.MedicalRecord != null) // Only appointments with medical records
+                .Select(x => new
+                {
+                    AppointmentId = x.Appointment.AppointmentID,
+                    PatientId = x.Appointment.PatientID,
+                    PatientName = x.Appointment.Patient.User.FirstName + " " + x.Appointment.Patient.User.LastName,
+                    Time = x.Appointment.Date,
+                    MedicalRecordId = x.MedicalRecord.RecordID
+                })
+                .OrderBy(x => x.Time)
+                .ToList<dynamic>();
+                
+            return appointmentsWithRecords;
+        }
+
+        /// <summary>
+        /// Gets patient information by ID
+        /// </summary>
+        /// <param name="patientId">The patient ID</param>
+        /// <returns>Basic patient information</returns>
+        public dynamic GetPatientInfoForAudiogram(int patientId)
+        {
+            var patient = _context.Patients
+                .Include(p => p.User)
+                .FirstOrDefault(p => p.PatientID == patientId);
+                
+            if (patient == null)
+                return null;
+                
+            int age = DateTime.Now.Year - patient.DateOfBirth.Year;
+            if (DateTime.Now.DayOfYear < patient.DateOfBirth.DayOfYear)
+                age--;
+                
+            return new
+            {
+                PatientName = $"{patient.User.FirstName} {patient.User.LastName}",
+                Age = age,
+                DateOfBirth = patient.DateOfBirth
+            };
+        }
+
+        /// <summary>
+        /// Gets all hearing tests for a medical record
+        /// </summary>
+        /// <param name="medicalRecordId">The medical record ID</param>
+        /// <returns>List of hearing tests</returns>
+        public List<HearingTest> GetHearingTestsForMedicalRecord(int medicalRecordId)
+        {
+            return _context.HearingTests
+                .Where(t => t.RecordID == medicalRecordId)
+                .OrderByDescending(t => t.TestDate)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets all audiogram data for a hearing test
+        /// </summary>
+        /// <param name="testId">The hearing test ID</param>
+        /// <returns>List of audiogram data points</returns>
+        public List<AudiogramData> GetAudiogramDataForTest(int testId)
+        {
+            return _context.AudiogramData
+                .Where(a => a.TestID == testId)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets diagnosis information from a medical record
+        /// </summary>
+        /// <param name="medicalRecordId">The medical record ID</param>
+        /// <returns>Diagnosis information or null if not available</returns>
+        public string GetDiagnosisForMedicalRecord(int medicalRecordId)
+        {
+            var record = _context.MedicalRecords
+                .FirstOrDefault(r => r.RecordID == medicalRecordId);
+                
+            return record?.Diagnosis;
+        }
+
+        /// <summary>
+        /// Updates hearing test notes
+        /// </summary>
+        /// <param name="testId">The hearing test ID</param>
+        /// <param name="notes">The new notes</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool UpdateHearingTestNotes(int testId, string notes)
+        {
+            var test = _context.HearingTests.Find(testId);
+            if (test == null)
+                return false;
+                
+            test.TestNotes = notes;
+            _context.SaveChanges();
+            return true;
+        }
+
+        #endregion
+
+        #region Hearing Test Repository Methods
+
+        /// <summary>
+        /// Gets all confirmed appointments for an audiologist on a specific date
+        /// </summary>
+        /// <param name="audiologistId">The audiologist ID</param>
+        /// <param name="date">The appointment date</param>
+        /// <returns>List of confirmed appointments</returns>
+        public List<dynamic> GetAudiologistAppointmentsForDate(int audiologistId, DateTime date)
+        {
+            DateTime startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0);
+            DateTime endOfDay = new DateTime(date.Year, date.Month, date.Day, 23, 59, 59);
+            
+            var appointments = _context.Appointments
+                .Include(a => a.Patient.User)
+                .Where(a => a.AudiologistID == audiologistId &&
+                          a.Date >= startOfDay && a.Date <= endOfDay &&
+                          a.Status == "Confirmed")
+                .OrderBy(a => a.Date)
+                .ToList();
+            
+            return appointments.Select(a => new
+            {
+                AppointmentId = a.AppointmentID,
+                PatientId = a.PatientID,
+                PatientName = $"{a.Patient.User.FirstName} {a.Patient.User.LastName}",
+                AppointmentTime = a.Date,
+                Purpose = a.PurposeOfVisit
+            }).ToList<dynamic>();
+        }
+
+        /// <summary>
+        /// Gets all hearing tests for a specific patient
+        /// </summary>
+        /// <param name="patientId">The patient ID</param>
+        /// <returns>List of hearing tests with their diagnoses</returns>
+        public List<dynamic> GetPatientHearingTestHistory(int patientId)
+        {
+            var result = new List<dynamic>();
+            
+            // Get medical records for this patient
+            var records = _context.MedicalRecords
+                .Where(r => r.PatientID == patientId)
+                .OrderByDescending(r => r.RecordDate)
+                .ToList();
+                
+            foreach (var record in records)
+            {
+                // Get hearing tests for each medical record
+                var tests = _context.HearingTests
+                    .Where(t => t.RecordID == record.RecordID)
+                    .OrderByDescending(t => t.TestDate)
+                    .ToList();
+                    
+                foreach (var test in tests)
+                {
+                    result.Add(new
+                    {
+                        TestId = test.TestID,
+                        TestDate = test.TestDate,
+                        TestType = test.TestType,
+                        Diagnosis = record.Diagnosis
+                    });
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Creates a new hearing test with audiogram data
+        /// </summary>
+        /// <param name="patientId">Patient ID</param>
+        /// <param name="appointmentId">Optional appointment ID (0 if not associated with appointment)</param>
+        /// <param name="audiologistId">Audiologist ID who created the test</param>
+        /// <param name="testType">Type of hearing test</param>
+        /// <param name="chiefComplaint">Patient's chief complaints</param>
+        /// <param name="audiogramData">Collection of audiogram data points</param>
+        /// <returns>The ID of the newly created hearing test</returns>
+        public int CreateHearingTest(
+            int patientId, 
+            int appointmentId, 
+            int audiologistId, 
+            string testType, 
+            string chiefComplaint,
+            List<AudiogramData> audiogramData)
+        {
+            using (var transaction = _context.Database.BeginTransaction())
+            {
+                try
+                {
+                    // Find or create medical record
+                    MedicalRecord medicalRecord = null;
+                    
+                    if (appointmentId > 0)
+                    {
+                        medicalRecord = _context.MedicalRecords
+                            .FirstOrDefault(mr => mr.AppointmentID == appointmentId);
+                    }
+                    
+                    if (medicalRecord == null)
+                    {
+                        // Create a new medical record
+                        medicalRecord = new MedicalRecord
+                        {
+                            PatientID = patientId,
+                            AppointmentID = appointmentId > 0 ? appointmentId : 0,
+                            CreatedBy = audiologistId,
+                            ChiefComplaint = chiefComplaint,
+                            Diagnosis = GetDiagnosisFromAudiogramData(audiogramData),
+                            RecordDate = DateTime.Now
+                        };
+                        
+                        _context.MedicalRecords.Add(medicalRecord);
+                        _context.SaveChanges(); // Save to get record ID
+                    }
+                    else
+                    {
+                        // Update existing record
+                        medicalRecord.ChiefComplaint = chiefComplaint;
+                        medicalRecord.Diagnosis = GetDiagnosisFromAudiogramData(audiogramData);
+                    }
+                    
+                    // Create hearing test
+                    var hearingTest = new HearingTest
+                    {
+                        RecordID = medicalRecord.RecordID,
+                        TestType = testType,
+                        TestDate = DateTime.Now
+                    };
+                    
+                    _context.HearingTests.Add(hearingTest);
+                    _context.SaveChanges(); // Save to get test ID
+                    
+                    // Add audiogram data points
+                    foreach (var dataPoint in audiogramData)
+                    {
+                        dataPoint.TestID = hearingTest.TestID;
+                        _context.AudiogramData.Add(dataPoint);
+                    }
+                    
+                    _context.SaveChanges();
+                    transaction.Commit();
+                    
+                    return hearingTest.TestID;
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Helper method to determine hearing loss severity
+        /// </summary>
+        private string GetDiagnosisFromAudiogramData(List<AudiogramData> audiogramData)
+        {
+            // Calculate average thresholds for each ear
+            int rightEarCount = 0;
+            int leftEarCount = 0;
+            double rightEarAvg = 0;
+            double leftEarAvg = 0;
+            
+            foreach (var dataPoint in audiogramData)
+            {
+                if (dataPoint.Ear.ToLower() == "right")
+                {
+                    rightEarAvg += dataPoint.Threshold;
+                    rightEarCount++;
+                }
+                else if (dataPoint.Ear.ToLower() == "left")
+                {
+                    leftEarAvg += dataPoint.Threshold;
+                    leftEarCount++;
+                }
+            }
+            
+            // Calculate average thresholds
+            if (rightEarCount > 0) rightEarAvg /= rightEarCount;
+            if (leftEarCount > 0) leftEarAvg /= leftEarCount;
+            
+            // Determine hearing loss severity
+            string rightEarDiagnosis = GetHearingLossSeverity(rightEarAvg);
+            string leftEarDiagnosis = GetHearingLossSeverity(leftEarAvg);
+            
+            return $"Right ear: {rightEarDiagnosis}. Left ear: {leftEarDiagnosis}.";
+        }
+
+        /// <summary>
+        /// Helper method to determine hearing loss severity based on threshold
+        /// </summary>
+        private string GetHearingLossSeverity(double avgThreshold)
+        {
+            if (avgThreshold < 20) return "Normal hearing";
+            if (avgThreshold < 40) return "Mild hearing loss";
+            if (avgThreshold < 60) return "Moderate hearing loss";
+            if (avgThreshold < 80) return "Severe hearing loss";
+            return "Profound hearing loss";
+        }
+
+        #endregion
+
+        #region Audiologist Appointment Completion Methods
+
+        /// <summary>
+        /// Gets audiologist's confirmed appointments with medical records for a specific date
+        /// </summary>
+        /// <param name="audiologistId">The audiologist ID</param>
+        /// <param name="date">The appointment date</param>
+        /// <returns>List of appointments eligible for completion</returns>
+        public List<dynamic> GetConfirmableAppointmentsForDate(int audiologistId, DateTime date)
+        {
+            DateTime startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0);
+            DateTime endOfDay = new DateTime(date.Year, date.Month, date.Day, 23, 59, 59);
+            
+            // Get appointments for the specified date with medical records
+            var result = new List<dynamic>();
+            
+            var appointments = _context.Appointments
+                .Include(a => a.Patient.User)
+                .Where(a => a.AudiologistID == audiologistId &&
+                           a.Date >= startOfDay && a.Date <= endOfDay &&
+                           a.Status == "Confirmed")
+                .ToList();
+            
+            foreach (var appointment in appointments)
+            {
+                // Check if this appointment has medical records with at least one hearing test
+                var medicalRecord = _context.MedicalRecords
+                    .FirstOrDefault(mr => mr.AppointmentID == appointment.AppointmentID);
+                
+                if (medicalRecord != null)
+                {
+                    var hasHearingTest = _context.HearingTests
+                        .Any(ht => ht.RecordID == medicalRecord.RecordID);
+                        
+                    if (hasHearingTest)
+                    {
+                        result.Add(new
+                        {
+                            AppointmentId = appointment.AppointmentID,
+                            PatientId = appointment.PatientID,
+                            MedicalRecordId = medicalRecord.RecordID,
+                            PatientName = $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}",
+                            AppointmentTime = appointment.Date,
+                            Purpose = appointment.PurposeOfVisit
+                        });
+                    }
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Gets appointment details by ID
+        /// </summary>
+        /// <param name="appointmentId">The appointment ID</param>
+        /// <returns>Appointment details or null if not found</returns>
+        public Appointment GetCompletableAppointmentById(int appointmentId)
+        {
+            return _context.Appointments
+                .Include(a => a.Patient.User)
+                .Include(a => a.Audiologist.User)
+                .FirstOrDefault(a => a.AppointmentID == appointmentId);
+        }
+
+        /// <summary>
+        /// Gets all hearing aid products for prescriptions
+        /// </summary>
+        /// <returns>List of hearing aid products</returns>
+        public List<Product> GetHearingAidProductsForPrescription()
+        {
+            return _context.Products
+                .OrderBy(p => p.Manufacturer)
+                .ThenBy(p => p.Model)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Marks an appointment as completed and creates a prescription if needed
+        /// </summary>
+        /// <param name="appointmentId">The appointment ID</param>
+        /// <param name="audiologistId">The audiologist ID</param>
+        /// <param name="productId">Optional product ID for prescription (null if no prescription)</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool CompleteAppointmentWithPrescription(int appointmentId, int audiologistId, int? productId = null)
+        {
+            using (var transaction = _context.Database.BeginTransaction())
+            {
+                try
+                {
+                    // Get the appointment
+                    var appointment = _context.Appointments.Find(appointmentId);
+                    if (appointment == null || appointment.Status != "Confirmed")
+                        return false;
+                        
+                    // Update appointment status
+                    appointment.Status = "Completed";
+                    
+                    // If a product is specified, create a prescription
+                    if (productId.HasValue)
+                    {
+                        var prescription = new Prescription
+                        {
+                            AppointmentID = appointmentId,
+                            PrescribedBy = audiologistId,
+                            PrescribedDate = DateTime.Now,
+                            ProductID = productId.Value
+                        };
+                        
+                        _context.Prescriptions.Add(prescription);
+                    }
+                    
+                    _context.SaveChanges();
+                    transaction.Commit();
+                    return true;
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        #endregion
+
         public void Dispose()
         {
             _context?.Dispose();

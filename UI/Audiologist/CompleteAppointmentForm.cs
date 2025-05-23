@@ -33,10 +33,14 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         private int? selectedPatientId;
         private int? selectedMedicalRecordId;
         private List<Product> products;
+
+        // Repository reference
+        private HearingClinicRepository repository;
         #endregion
 
         public CompleteAppointmentForm()
         {
+            repository = HearingClinicRepository.Instance;
             products = new List<Product>();
             InitializeComponents();
             LoadAppointmentsForDate(DateTime.Today);
@@ -353,11 +357,10 @@ namespace HearingClinicManagementSystem.UI.Audiologist
                 return;
 
             dynamic appointmentItem = selectedItem;
-            var appointmentInfo = appointmentItem.AppointmentInfo;
 
-            selectedAppointmentId = appointmentInfo.AppointmentId;
-            selectedPatientId = appointmentInfo.PatientId;
-            selectedMedicalRecordId = appointmentInfo.MedicalRecordId;
+            selectedAppointmentId = appointmentItem.AppointmentId;
+            selectedPatientId = appointmentItem.PatientId;
+            selectedMedicalRecordId = appointmentItem.MedicalRecordId;
 
             // Load patient info
             LoadPatientInfo(selectedPatientId.Value);
@@ -376,60 +379,41 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         {
             if (!selectedAppointmentId.HasValue)
             {
-                //UIService.ShowWarning("Please select an appointment first.");
+                UIService.ShowWarning("Please select an appointment first.");
                 return;
             }
 
             try
             {
-                // Get the appointment
-                var appointment = StaticDataProvider.Appointments
-                    .FirstOrDefault(a => a.AppointmentID == selectedAppointmentId.Value);
+                int? productId = null;
 
-                if (appointment == null)
+                // If a prescription is needed, get the selected product
+                if (chkNeedsPrescription.Checked && cmbRecommendedDevice.SelectedItem != null)
                 {
-                    UIService.ShowError("Could not find the selected appointment.");
-                    return;
+                    dynamic selectedDevice = cmbRecommendedDevice.SelectedItem;
+                    productId = selectedDevice.ProductId;
                 }
 
-                // Mark the appointment as completed
-                appointment.Status = "Completed";
+                // Complete the appointment using the repository
+                bool success = repository.CompleteAppointmentWithPrescription(
+                    selectedAppointmentId.Value,
+                    GetCurrentAudiologistId(),
+                    productId);
 
-                // If a prescription is needed, create one
-                if (chkNeedsPrescription.Checked)
+                if (success)
                 {
-                    // Create a new prescription
-                    int newPrescriptionId = StaticDataProvider.Prescriptions.Count > 0 ?
-                        StaticDataProvider.Prescriptions.Max(p => p.PrescriptionID) + 1 : 1;
+                    UIService.ShowSuccess("Appointment completed successfully!");
 
-                    // Get the recommended device
-                    Product recommendedProduct = null;
-                    if (cmbRecommendedDevice.SelectedItem != null)
-                    {
-                        dynamic selectedDevice = cmbRecommendedDevice.SelectedItem;
-                        recommendedProduct = selectedDevice.Product;
-                    }
+                    // Refresh the appointments list
+                    LoadAppointmentsForDate(dtpAppointmentDate.Value.Date);
 
-                    var prescription = new Prescription
-                    {
-                        PrescriptionID = newPrescriptionId,
-                        AppointmentID = selectedAppointmentId.Value,
-                        PrescribedBy = GetCurrentAudiologistId(),
-                        PrescribedDate = DateTime.Now,
-                        ProductID = recommendedProduct?.ProductID
-                    };
-
-                    // Save to data store
-                    StaticDataProvider.Prescriptions.Add(prescription);
+                    // Reset prescription fields
+                    ResetPrescriptionFields();
                 }
-
-                UIService.ShowSuccess("Appointment completed successfully!");
-
-                // Refresh the appointments list
-                LoadAppointmentsForDate(dtpAppointmentDate.Value.Date);
-
-                // Reset prescription fields
-                ResetPrescriptionFields();
+                else
+                {
+                    UIService.ShowError("Failed to complete the appointment. Please try again.");
+                }
             }
             catch (Exception ex)
             {
@@ -441,166 +425,189 @@ namespace HearingClinicManagementSystem.UI.Audiologist
         #region Helper Methods
         private void LoadAppointmentsForDate(DateTime date)
         {
-            // Clear and reset the appointments dropdown
-            cmbAppointments.DataSource = null;
-            cmbAppointments.Items.Clear();
-
-            // Get current audiologist
-            var audiologistId = GetCurrentAudiologistId();
-            if (audiologistId == 0)
+            try
             {
-                UIService.ShowError("Could not identify the current audiologist.");
-                return;
+                // Clear and reset the appointments dropdown
+                cmbAppointments.DataSource = null;
+                cmbAppointments.Items.Clear();
+
+                // Get current audiologist
+                int audiologistId = GetCurrentAudiologistId();
+                if (audiologistId == 0)
+                {
+                    UIService.ShowError("Could not identify the current audiologist.");
+                    return;
+                }
+
+                // Get appointments with medical records for this date
+                var appointmentsWithRecords = repository.GetConfirmableAppointmentsForDate(audiologistId, date);
+
+                if (appointmentsWithRecords.Count == 0)
+                {
+                    // Add a dummy item to indicate no appointments
+                    var noAppointmentsItem = new
+                    {
+                        DisplayName = "No eligible appointments for this date",
+                        IsEmpty = true
+                    };
+                    cmbAppointments.Items.Add(noAppointmentsItem);
+                    cmbAppointments.DisplayMember = "DisplayName";
+                    cmbAppointments.Enabled = false;
+                    cmbAppointments.SelectedIndex = 0;
+
+                    // Reset fields
+                    selectedAppointmentId = null;
+                    selectedPatientId = null;
+                    selectedMedicalRecordId = null;
+                    ResetPatientFields();
+                    ResetPrescriptionFields();
+
+                    return;
+                }
+
+                // Create appointment items with formatted display names
+                var appointmentItems = appointmentsWithRecords.Select(appt => new
+                {
+                    appt.AppointmentId,
+                    appt.PatientId,
+                    appt.MedicalRecordId,
+                    DisplayName = $"{appt.AppointmentTime.ToShortTimeString()} - {appt.PatientName} - {appt.Purpose}"
+                }).ToList();
+
+                // Set up combobox
+                cmbAppointments.DisplayMember = "DisplayName";
+                cmbAppointments.DataSource = appointmentItems;
+                cmbAppointments.Enabled = true;
+
+                // If we have appointments, select the first one by default
+                if (cmbAppointments.Items.Count > 0)
+                {
+                    cmbAppointments.SelectedIndex = 0;
+                }
+
+                // Load hearing aid products for recommendations
+                LoadHearingAidProducts();
             }
-
-            // Find confirmed appointments with medical records for this date
-            var appointmentsWithRecords = (from appointment in StaticDataProvider.Appointments
-                                           join record in StaticDataProvider.MedicalRecords
-                                           on appointment.AppointmentID equals record.AppointmentID
-                                           join test in StaticDataProvider.HearingTests
-                                           on record.RecordID equals test.RecordID
-                                           where appointment.AudiologistID == audiologistId
-                                           && appointment.Date.Date == date.Date
-                                           && appointment.Status == "Confirmed" // Only confirmed appointments
-                                           select new
-                                           {
-                                               Appointment = appointment,
-                                               Record = record
-                                           }).Distinct().ToList(); // Ensure we don't duplicate appointments
-
-            if (appointmentsWithRecords.Count == 0)
+            catch (Exception ex)
             {
-                // Add a dummy item to indicate no appointments
+                UIService.ShowError($"Error loading appointments: {ex.Message}");
+
+                // Create a default "no appointments" item
                 var noAppointmentsItem = new
                 {
-                    DisplayName = "No eligible appointments for this date",
+                    DisplayName = "Error loading appointments",
                     IsEmpty = true
                 };
                 cmbAppointments.Items.Add(noAppointmentsItem);
                 cmbAppointments.DisplayMember = "DisplayName";
                 cmbAppointments.Enabled = false;
                 cmbAppointments.SelectedIndex = 0;
-
-                // Reset fields
-                selectedAppointmentId = null;
-                selectedPatientId = null;
-                selectedMedicalRecordId = null;
-                ResetPatientFields();
-                ResetPrescriptionFields();
-
-                return;
             }
-
-            // Create appointment items with formatted display names
-            var appointmentItems = appointmentsWithRecords.Select(item =>
-            {
-                // Find patient
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == item.Appointment.PatientID);
-                string patientName = patient != null && patient.User != null
-                    ? $"{patient.User.FirstName} {patient.User.LastName}"
-                    : "Unknown Patient";
-
-                return new
-                {
-                    AppointmentInfo = new
-                    {
-                        AppointmentId = item.Appointment.AppointmentID,
-                        PatientId = item.Appointment.PatientID,
-                        MedicalRecordId = item.Record.RecordID
-                    },
-                    DisplayName = $"{item.Appointment.Date.ToShortTimeString()} - {patientName} - {item.Appointment.PurposeOfVisit}"
-                };
-            }).ToList();
-
-            // Set up combobox
-            cmbAppointments.DisplayMember = "DisplayName";
-            cmbAppointments.ValueMember = "AppointmentInfo";
-            cmbAppointments.DataSource = appointmentItems;
-            cmbAppointments.Enabled = true;
-
-            // If we have appointments, select the first one by default
-            if (cmbAppointments.Items.Count > 0)
-            {
-                cmbAppointments.SelectedIndex = 0;
-            }
-
-            // Load hearing aid products for recommendations
-            LoadHearingAidProducts();
         }
 
         private void LoadHearingAidProducts()
         {
-            // Clear and reset the hearing aid products dropdown
-            cmbRecommendedDevice.DataSource = null;
-            cmbRecommendedDevice.Items.Clear();
-
-            // Get all products (hearing aid models)
-            products = StaticDataProvider.Products.ToList();
-
-            if (products.Count == 0)
+            try
             {
-                cmbRecommendedDevice.Enabled = false;
-                return;
+                // Clear and reset the hearing aid products dropdown
+                cmbRecommendedDevice.DataSource = null;
+                cmbRecommendedDevice.Items.Clear();
+
+                // Get all products (hearing aid models)
+                products = repository.GetHearingAidProductsForPrescription();
+
+                if (products.Count == 0)
+                {
+                    cmbRecommendedDevice.Enabled = false;
+                    return;
+                }
+
+                // Create list items for the dropdown
+                var productItems = products.Select(product => new
+                {
+                    ProductId = product.ProductID,
+                    DisplayName = $"{product.Manufacturer} {product.Model} - ${product.Price:F2}"
+                }).ToList();
+
+                // Set up combobox
+                cmbRecommendedDevice.DisplayMember = "DisplayName";
+                cmbRecommendedDevice.DataSource = productItems;
+                cmbRecommendedDevice.Enabled = true;
             }
-
-            // Create list items for the dropdown
-            var productItems = products.Select(product => new
+            catch (Exception ex)
             {
-                Product = product,
-                DisplayName = $"{product.Manufacturer} {product.Model} - ${product.Price:F2}"
-            }).ToList();
-
-            // Set up combobox
-            cmbRecommendedDevice.DisplayMember = "DisplayName";
-            cmbRecommendedDevice.ValueMember = "Product";
-            cmbRecommendedDevice.DataSource = productItems;
-            cmbRecommendedDevice.Enabled = true;
+                UIService.ShowError($"Error loading hearing aid products: {ex.Message}");
+                cmbRecommendedDevice.Enabled = false;
+            }
         }
 
         private void LoadPatientInfo(int patientId)
         {
-            var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == patientId);
-            if (patient != null && patient.User != null)
+            try
             {
-                // Calculate age
-                int age = DateTime.Now.Year - patient.DateOfBirth.Year;
-                if (DateTime.Now.DayOfYear < patient.DateOfBirth.DayOfYear)
-                    age--;
+                var patient = repository.GetPatientById(patientId);
+                if (patient?.User != null)
+                {
+                    // Calculate age
+                    int age = DateTime.Now.Year - patient.DateOfBirth.Year;
+                    if (DateTime.Now.DayOfYear < patient.DateOfBirth.DayOfYear)
+                        age--;
 
-                // Format patient info
-                lblPatientInfo.Text = $"Patient: {patient.User.FirstName} {patient.User.LastName} | Age: {age} | ID: {patientId}";
+                    // Format patient info
+                    lblPatientInfo.Text = $"Patient: {patient.User.FirstName} {patient.User.LastName} | Age: {age} | ID: {patientId}";
+                }
+                else
+                {
+                    lblPatientInfo.Text = "Patient information not available";
+                }
             }
-            else
+            catch (Exception ex)
             {
-                lblPatientInfo.Text = "Patient information not available";
+                lblPatientInfo.Text = "Error loading patient information";
+                Console.WriteLine($"Error loading patient info: {ex.Message}");
             }
         }
 
         private void LoadAppointmentInfo(int appointmentId)
         {
-            var appointment = StaticDataProvider.Appointments.FirstOrDefault(a => a.AppointmentID == appointmentId);
-            if (appointment != null)
+            try
             {
-                lblAppointmentInfo.Text = $"Appointment: {appointment.Date.ToShortDateString()} at {appointment.Date.ToShortTimeString()} - {appointment.PurposeOfVisit}";
+                var appointment = repository.GetCompletableAppointmentById(appointmentId);
+                if (appointment != null)
+                {
+                    lblAppointmentInfo.Text = $"Appointment: {appointment.Date.ToShortDateString()} at {appointment.Date.ToShortTimeString()} - {appointment.PurposeOfVisit}";
+                }
+                else
+                {
+                    lblAppointmentInfo.Text = "Appointment information not available";
+                }
             }
-            else
+            catch (Exception ex)
             {
-                lblAppointmentInfo.Text = "Appointment information not available";
+                lblAppointmentInfo.Text = "Error loading appointment information";
+                Console.WriteLine($"Error loading appointment info: {ex.Message}");
             }
         }
 
         private void LoadDiagnosisInfo(int medicalRecordId)
         {
-            var record = StaticDataProvider.MedicalRecords
-                .FirstOrDefault(r => r.RecordID == medicalRecordId);
+            try
+            {
+                string diagnosis = repository.GetDiagnosisForMedicalRecord(medicalRecordId);
 
-            if (record != null && !string.IsNullOrEmpty(record.Diagnosis))
-            {
-                lblDiagnosis.Text = record.Diagnosis;
+                if (!string.IsNullOrEmpty(diagnosis))
+                {
+                    lblDiagnosis.Text = diagnosis;
+                }
+                else
+                {
+                    lblDiagnosis.Text = "No diagnosis information available";
+                }
             }
-            else
+            catch (Exception ex)
             {
-                lblDiagnosis.Text = "No diagnosis information available";
+                lblDiagnosis.Text = "Error loading diagnosis information";
+                Console.WriteLine($"Error loading diagnosis info: {ex.Message}");
             }
         }
 
@@ -610,9 +617,7 @@ namespace HearingClinicManagementSystem.UI.Audiologist
             if (currentUser == null)
                 return 0;
 
-            var audiologist = StaticDataProvider.Audiologists
-                .FirstOrDefault(a => a.UserID == currentUser.UserID);
-
+            var audiologist = repository.GetAudiologistByUserId(currentUser.UserID);
             return audiologist?.AudiologistID ?? 0;
         }
 
