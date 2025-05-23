@@ -36,11 +36,10 @@ namespace HearingClinicManagementSystem.Data
             }
         }
 
-        // User methods
-        public List<User> GetAllUsers()
-        {
-            return _context.Users.ToList();
-        }
+        //public List<User> GetAllUsers()
+        //{
+        //    return _context.Users.ToList();
+        //}
 
         public User GetUserById(int id)
         {
@@ -52,11 +51,11 @@ namespace HearingClinicManagementSystem.Data
             return _context.Users.FirstOrDefault(u => u.Username == username);
         }
 
-        public void AddUser(User user)
-        {
-            _context.Users.Add(user);
-            _context.SaveChanges();
-        }
+        //public void AddUser(User user)
+        //{
+        //    _context.Users.Add(user);
+        //    _context.SaveChanges();
+        //}
 
         public void UpdateUser(User user)
         {
@@ -64,11 +63,10 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        // Patient methods
-        public List<Patient> GetAllPatients()
-        {
-            return _context.Patients.Include(p => p.User).ToList();
-        }
+        //public List<Patient> GetAllPatients()
+        //{
+        //    return _context.Patients.Include(p => p.User).ToList();
+        //}
 
         public Patient GetPatientById(int id)
         {
@@ -80,19 +78,17 @@ namespace HearingClinicManagementSystem.Data
             return _context.Patients.Include(p => p.User).FirstOrDefault(p => p.UserID == userId);
         }
 
-        public void AddPatient(Patient patient)
-        {
-            _context.Patients.Add(patient);
-            _context.SaveChanges();
-        }
+        //public void AddPatient(Patient patient)
+        //{
+        //    _context.Patients.Add(patient);
+        //    _context.SaveChanges();
+        //}
 
         public void UpdatePatient(Patient patient)
         {
             _context.Entry(patient).State = EntityState.Modified;
             _context.SaveChanges();
         }
-
-        // Audiologist methods
         public List<Audiologist> GetAllAudiologists()
         {
             return _context.Audiologists
@@ -100,16 +96,11 @@ namespace HearingClinicManagementSystem.Data
                 .ToList();
         }
 
-        public Audiologist GetAudiologistById(int id)
-        {
-            return _context.Audiologists.Include(a => a.User).FirstOrDefault(a => a.AudiologistID == id);
-        }
+        //public Audiologist GetAudiologistById(int id)
+        //{
+        //    return _context.Audiologists.Include(a => a.User).FirstOrDefault(a => a.AudiologistID == id);
+        //}
 
-        /// <summary>
-        /// Gets an audiologist by user ID
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <returns>Audiologist entity or null if not found</returns>
         public Audiologist GetAudiologistByUserId(int userId)
         {
             return _context.Audiologists
@@ -117,12 +108,7 @@ namespace HearingClinicManagementSystem.Data
                 .FirstOrDefault(a => a.UserID == userId);
         }
 
-        // Receptionist methods
-        /// <summary>
-        /// Gets a receptionist by user ID
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <returns>Receptionist entity or null if not found</returns>
+
         public Receptionist GetReceptionistByUserId(int userId)
         {
             return _context.Receptionists
@@ -130,12 +116,6 @@ namespace HearingClinicManagementSystem.Data
                 .FirstOrDefault(r => r.UserID == userId);
         }
 
-        // Inventory Manager methods
-        /// <summary>
-        /// Gets an inventory manager by user ID
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <returns>InventoryManager entity or null if not found</returns>
         public InventoryManager GetInventoryManagerByUserId(int userId)
         {
             return _context.InventoryManagers
@@ -143,12 +123,6 @@ namespace HearingClinicManagementSystem.Data
                 .FirstOrDefault(im => im.UserID == userId);
         }
 
-        // Clinic Manager methods
-        /// <summary>
-        /// Gets a clinic manager by user ID
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <returns>ClinicManager entity or null if not found</returns>
         public ClinicManager GetClinicManagerByUserId(int userId)
         {
             return _context.ClinicManagers
@@ -156,7 +130,6 @@ namespace HearingClinicManagementSystem.Data
                 .FirstOrDefault(cm => cm.UserID == userId);
         }
 
-        // Product methods
         public List<Product> GetAllProducts()
         {
             return _context.Products.ToList();
@@ -167,33 +140,32 @@ namespace HearingClinicManagementSystem.Data
             return _context.Products.Find(id);
         }
 
-        public void AddProduct(Product product)
-        {
-            _context.Products.Add(product);
-            _context.SaveChanges();
-        }
+        //public void AddProduct(Product product)
+        //{
+        //    _context.Products.Add(product);
+        //    _context.SaveChanges();
+        //}
 
-        public void UpdateProduct(Product product)
-        {
-            _context.Entry(product).State = EntityState.Modified;
-            _context.SaveChanges();
-        }
+        //public void UpdateProduct(Product product)
+        //{
+        //    _context.Entry(product).State = EntityState.Modified;
+        //    _context.SaveChanges();
+        //}
 
-        public void DeleteProduct(int id)
-        {
-            var product = _context.Products.Find(id);
-            if (product != null)
-            {
-                _context.Products.Remove(product);
-                _context.SaveChanges();
-            }
-        }
+        //public void DeleteProduct(int id)
+        //{
+        //    var product = _context.Products.Find(id);
+        //    if (product != null)
+        //    {
+        //        _context.Products.Remove(product);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
-        // Order methods
-        public List<Order> GetAllOrders()
-        {
-            return _context.Orders.ToList();
-        }
+        //public List<Order> GetAllOrders()
+        //{
+        //    return _context.Orders.ToList();
+        //}
 
         public List<Order> GetOrdersByPatientId(int patientId)
         {
@@ -217,20 +189,16 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        public void DeleteOrder(int id)
-        {
-            var order = _context.Orders.Find(id);
-            if (order != null)
-            {
-                _context.Orders.Remove(order);
-                _context.SaveChanges();
-            }
-        }
+        //public void DeleteOrder(int id)
+        //{
+        //    var order = _context.Orders.Find(id);
+        //    if (order != null)
+        //    {
+        //        _context.Orders.Remove(order);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
-        /// <summary>
-        /// Removes an order item from the database
-        /// </summary>
-        /// <param name="item">The order item to remove</param>
         public void RemoveOrderItem(OrderItem item)
         {
             if (item == null)
@@ -244,24 +212,16 @@ namespace HearingClinicManagementSystem.Data
             }
         }
 
-        /// <summary>
-        /// Removes an order item from the database by ID
-        /// </summary>
-        /// <param name="orderItemId">The ID of the order item to remove</param>
-        public void RemoveOrderItem(int orderItemId)
-        {
-            var existingItem = _context.OrderItems.Find(orderItemId);
-            if (existingItem != null)
-            {
-                _context.OrderItems.Remove(existingItem);
-                _context.SaveChanges();
-            }
-        }
+        //public void RemoveOrderItem(int orderItemId)
+        //{
+        //    var existingItem = _context.OrderItems.Find(orderItemId);
+        //    if (existingItem != null)
+        //    {
+        //        _context.OrderItems.Remove(existingItem);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
-        /// <summary>
-        /// Removes an order from the database
-        /// </summary>
-        /// <param name="order">The order to remove</param>
         public void RemoveOrder(Order order)
         {
             if (order == null)
@@ -282,28 +242,23 @@ namespace HearingClinicManagementSystem.Data
             }
         }
 
-        /// <summary>
-        /// Removes an order from the database by ID
-        /// </summary>
-        /// <param name="orderId">The ID of the order to remove</param>
-        public void RemoveOrder(int orderId)
-        {
-            var existingOrder = _context.Orders.Find(orderId);
-            if (existingOrder != null)
-            {
-                // First remove any associated order items to avoid foreign key constraint violations
-                var orderItems = _context.OrderItems.Where(oi => oi.OrderID == orderId).ToList();
-                foreach (var item in orderItems)
-                {
-                    _context.OrderItems.Remove(item);
-                }
+        //public void RemoveOrder(int orderId)
+        //{
+        //    var existingOrder = _context.Orders.Find(orderId);
+        //    if (existingOrder != null)
+        //    {
+        //        // First remove any associated order items to avoid foreign key constraint violations
+        //        var orderItems = _context.OrderItems.Where(oi => oi.OrderID == orderId).ToList();
+        //        foreach (var item in orderItems)
+        //        {
+        //            _context.OrderItems.Remove(item);
+        //        }
                 
-                _context.Orders.Remove(existingOrder);
-                _context.SaveChanges();
-            }
-        }
+        //        _context.Orders.Remove(existingOrder);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
-        // Order management specific methods
         public List<Order> GetAllOrdersWithDetails()
         {
             return _context.Orders
@@ -418,52 +373,50 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        public void DeleteOrderItem(int id)
-        {
-            var orderItem = _context.OrderItems.Find(id);
-            if (orderItem != null)
-            {
-                _context.OrderItems.Remove(orderItem);
-                _context.SaveChanges();
-            }
-        }
+        //public void DeleteOrderItem(int id)
+        //{
+        //    var orderItem = _context.OrderItems.Find(id);
+        //    if (orderItem != null)
+        //    {
+        //        _context.OrderItems.Remove(orderItem);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
-        // Inventory Transaction methods
-        public void AddInventoryTransaction(InventoryTransaction transaction)
-        {
-            _context.InventoryTransactions.Add(transaction);
-            _context.SaveChanges();
-        }
+        //public void AddInventoryTransaction(InventoryTransaction transaction)
+        //{
+        //    _context.InventoryTransactions.Add(transaction);
+        //    _context.SaveChanges();
+        //}
 
-        public List<InventoryTransaction> GetInventoryTransactionsByProductId(int productId)
-        {
-            return _context.InventoryTransactions.Where(it => it.ProductID == productId).ToList();
-        }
+        //public List<InventoryTransaction> GetInventoryTransactionsByProductId(int productId)
+        //{
+        //    return _context.InventoryTransactions.Where(it => it.ProductID == productId).ToList();
+        //}
 
-        // Invoice methods
-        public void AddInvoice(Invoice invoice)
-        {
-            _context.Invoices.Add(invoice);
-            _context.SaveChanges();
-        }
+        //public void AddInvoice(Invoice invoice)
+        //{
+        //    _context.Invoices.Add(invoice);
+        //    _context.SaveChanges();
+        //}
 
-        public void UpdateInvoice(Invoice invoice)
-        {
-            _context.Entry(invoice).State = EntityState.Modified;
-            _context.SaveChanges();
-        }
+        //public void UpdateInvoice(Invoice invoice)
+        //{
+        //    _context.Entry(invoice).State = EntityState.Modified;
+        //    _context.SaveChanges();
+        //}
 
-        public Invoice GetInvoiceByOrderId(int orderId)
-        {
-            return _context.Invoices.FirstOrDefault(i => i.OrderID == orderId);
-        }
+        //public Invoice GetInvoiceByOrderId(int orderId)
+        //{
+        //    return _context.Invoices.FirstOrDefault(i => i.OrderID == orderId);
+        //}
 
-        public List<Invoice> GetInvoicesByPatientId(int patientId)
-        {
-            return _context.Invoices
-                .Where(i => i.Appointment.PatientID == patientId || i.Order.PatientID == patientId)
-                .ToList();
-        }
+        //public List<Invoice> GetInvoicesByPatientId(int patientId)
+        //{
+        //    return _context.Invoices
+        //        .Where(i => i.Appointment.PatientID == patientId || i.Order.PatientID == patientId)
+        //        .ToList();
+        //}
 
         public List<Invoice> GetInvoicesByAppointmentIds(List<int> appointmentIds)
         {
@@ -472,11 +425,6 @@ namespace HearingClinicManagementSystem.Data
                 .ToList();
         }
 
-        /// <summary>
-        /// Gets all invoices for a specific appointment with related payment information
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <returns>List of invoices with related payment information</returns>
         public List<dynamic> GetInvoicesForAppointment(int appointmentId)
         {
             // Get invoice IDs for this appointment
@@ -510,12 +458,7 @@ namespace HearingClinicManagementSystem.Data
             
             return result;
         }
-        
-        /// <summary>
-        /// Gets all invoices for a specific order with related payment information
-        /// </summary>
-        /// <param name="orderId">The order ID</param>
-        /// <returns>List of invoices with related payment information</returns>
+
         public List<dynamic> GetInvoicesForOrder(int orderId)
         {
             // Get invoice IDs for this order
@@ -550,7 +493,6 @@ namespace HearingClinicManagementSystem.Data
             return result;
         }
 
-        // Appointment methods
         public List<Appointment> GetAppointmentsByPatientId(int patientId)
         {
             return _context.Appointments
@@ -581,12 +523,12 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        public List<Schedule> GetSchedulesByAudiologistId(int audiologistId)
-        {
-            return _context.Schedules
-                .Where(s => s.AudiologistID == audiologistId)
-                .ToList();
-        }
+        //public List<Schedule> GetSchedulesByAudiologistId(int audiologistId)
+        //{
+        //    return _context.Schedules
+        //        .Where(s => s.AudiologistID == audiologistId)
+        //        .ToList();
+        //}
 
         public Schedule GetScheduleByAudiologistAndDay(int audiologistId, string dayOfWeek)
         {
@@ -613,12 +555,6 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        /// <summary>
-        /// Gets available time slots for a specific audiologist on a specific date
-        /// </summary>
-        /// <param name="audiologistId">ID of the audiologist</param>
-        /// <param name="date">Date for the appointment</param>
-        /// <returns>List of available time slots with display information</returns>
         public List<dynamic> GetAvailableTimeSlots(int audiologistId, DateTime date)
         {
             var dayOfWeek = date.DayOfWeek.ToString();
@@ -667,7 +603,6 @@ namespace HearingClinicManagementSystem.Data
             return availableSlots;
         }
 
-        // Medical Record methods
         public List<MedicalRecord> GetMedicalRecordsByPatientId(int patientId)
         {
             return _context.MedicalRecords
@@ -696,12 +631,12 @@ namespace HearingClinicManagementSystem.Data
                 .ToList();
         }
 
-        public List<AudiogramData> GetAudiogramDataByTestId(int testId)
-        {
-            return _context.AudiogramData
-                .Where(ad => ad.TestID == testId)
-                .ToList();
-        }
+        //public List<AudiogramData> GetAudiogramDataByTestId(int testId)
+        //{
+        //    return _context.AudiogramData
+        //        .Where(ad => ad.TestID == testId)
+        //        .ToList();
+        //}
 
         // Prescription methods
         public List<Prescription> GetPrescriptionsByAppointmentId(int appointmentId)
@@ -735,13 +670,13 @@ namespace HearingClinicManagementSystem.Data
             _context.SaveChanges();
         }
 
-        public void DeleteProductForManager(int productId) {
-            var product = _context.Products.Find(productId);
-            if (product != null) {
-                _context.Products.Remove(product);
-                _context.SaveChanges();
-            }
-        }
+        //public void DeleteProductForManager(int productId) {
+        //    var product = _context.Products.Find(productId);
+        //    if (product != null) {
+        //        _context.Products.Remove(product);
+        //        _context.SaveChanges();
+        //    }
+        //}
 
         public void AddStock(int productId, int quantity, string reason, int processedBy) {
             using (var transaction = _context.Database.BeginTransaction()) {
@@ -808,19 +743,13 @@ namespace HearingClinicManagementSystem.Data
             }
         }
 
-        public int GetNextProductId() {
-            if (!_context.Products.Any())
-                return 1;
+        //public int GetNextProductId() {
+        //    if (!_context.Products.Any())
+        //        return 1;
 
-            return _context.Products.Max(p => p.ProductID) + 1;
-        }
+        //    return _context.Products.Max(p => p.ProductID) + 1;
+        //}
 
-        // Receptionist appointment management methods
-        
-        /// <summary>
-        /// Gets all active patients for appointment booking
-        /// </summary>
-        /// <returns>List of patients with active user accounts</returns>
         public List<dynamic> GetActivePatients()
         {
             return _context.Patients
@@ -834,11 +763,7 @@ namespace HearingClinicManagementSystem.Data
                 .OrderBy(p => p.DisplayName)
                 .ToList<dynamic>();
         }
-        
-        /// <summary>
-        /// Gets all active audiologists for appointment booking
-        /// </summary>
-        /// <returns>List of audiologists with active user accounts</returns>
+
         public List<dynamic> GetActiveAudiologists()
         {
             return _context.Audiologists
@@ -853,10 +778,7 @@ namespace HearingClinicManagementSystem.Data
                 .OrderBy(a => a.DisplayName)
                 .ToList<dynamic>();
         }
-        
-        /// <summary>
-        /// Helper method to format TimeSpan for 12-hour display
-        /// </summary>
+
         private string FormatTimeFor12HourDisplay(TimeSpan time)
         {
             int hour = time.Hours;
@@ -876,12 +798,7 @@ namespace HearingClinicManagementSystem.Data
             
             return $"{hour}:{minutes} {amPm}";
         }
-        
-        /// <summary>
-        /// Books a new appointment
-        /// </summary>
-        /// <param name="appointment">The appointment to book</param>
-        /// <returns>The ID of the newly created appointment</returns>
+
         public int CreateAppointment(Appointment appointment)
         {
             using (var transaction = _context.Database.BeginTransaction())
@@ -909,23 +826,15 @@ namespace HearingClinicManagementSystem.Data
                 }
             }
         }
-        
-        /// <summary>
-        /// Gets the next available appointment ID
-        /// </summary>
-        /// <returns>Next available appointment ID</returns>
-        public int GetNextAppointmentId()
-        {
-            if (!_context.Appointments.Any())
-                return 1;
-                
-            return _context.Appointments.Max(a => a.AppointmentID) + 1;
-        }
 
-        /// <summary>
-        /// Gets all appointments ordered by pending status and date
-        /// </summary>
-        /// <returns>List of all appointments with details</returns>
+        //public int GetNextAppointmentId()
+        //{
+        //    if (!_context.Appointments.Any())
+        //        return 1;
+                
+        //    return _context.Appointments.Max(a => a.AppointmentID) + 1;
+        //}
+
         public List<Appointment> GetAllAppointmentsWithDetails()
         {
             return _context.Appointments
@@ -936,12 +845,7 @@ namespace HearingClinicManagementSystem.Data
                 .ThenByDescending(a => a.Date)
                 .ToList();
         }
-        
-        /// <summary>
-        /// Gets appointment by ID with all related details
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <returns>Appointment with patient, audiologist and time slot details</returns>
+
         public Appointment GetAppointmentWithDetails(int appointmentId)
         {
             return _context.Appointments
@@ -950,13 +854,7 @@ namespace HearingClinicManagementSystem.Data
                 .Include(a => a.TimeSlot)
                 .FirstOrDefault(a => a.AppointmentID == appointmentId);
         }
-        
-        /// <summary>
-        /// Confirms a pending appointment and sets the fee
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <param name="fee">The appointment fee</param>
-        /// <returns>True if successful, false otherwise</returns>
+
         public bool ConfirmAppointment(int appointmentId, decimal fee)
         {
             using (var transaction = _context.Database.BeginTransaction())
@@ -982,12 +880,7 @@ namespace HearingClinicManagementSystem.Data
                 }
             }
         }
-        
-        /// <summary>
-        /// Cancels a pending appointment and releases the time slot
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <returns>True if successful, false otherwise</returns>
+
         public bool CancelAppointment(int appointmentId)
         {
             using (var transaction = _context.Database.BeginTransaction())
@@ -1019,30 +912,18 @@ namespace HearingClinicManagementSystem.Data
                 }
             }
         }
-        
-        /// <summary>
-        /// Updates an appointment's fee
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <param name="fee">The new fee amount</param>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool UpdateAppointmentFee(int appointmentId, decimal fee)
-        {
-            var appointment = _context.Appointments.Find(appointmentId);
-            if (appointment == null)
-                return false;
-                
-            appointment.Fee = fee;
-            _context.SaveChanges();
-            return true;
-        }
 
-        // Payment and Invoice management methods
-        
-        /// <summary>
-        /// Gets all completed appointments with payment details
-        /// </summary>
-        /// <returns>List of completed appointments with payment information</returns>
+        //public bool UpdateAppointmentFee(int appointmentId, decimal fee)
+        //{
+        //    var appointment = _context.Appointments.Find(appointmentId);
+        //    if (appointment == null)
+        //        return false;
+                
+        //    appointment.Fee = fee;
+        //    _context.SaveChanges();
+        //    return true;
+        //}
+
         public List<Appointment> GetCompletedAppointmentsWithPaymentDetails()
         {
             return _context.Appointments
@@ -1052,11 +933,7 @@ namespace HearingClinicManagementSystem.Data
                 .OrderByDescending(a => a.Date)
                 .ToList();
         }
-        
-        /// <summary>
-        /// Gets all confirmed orders with payment details
-        /// </summary>
-        /// <returns>List of confirmed orders with payment information</returns>
+
         public List<Order> GetConfirmedOrdersWithPaymentDetails()
         {
             return _context.Orders
@@ -1067,12 +944,7 @@ namespace HearingClinicManagementSystem.Data
                 .OrderByDescending(o => o.OrderDate)
                 .ToList();
         }
-        
-        /// <summary>
-        /// Calculates the total paid amount for an appointment
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <returns>Total paid amount</returns>
+
         public decimal CalculateTotalPaidAmountForAppointment(int appointmentId)
         {
             // Handle case where no invoices exist for the appointment
@@ -1083,12 +955,7 @@ namespace HearingClinicManagementSystem.Data
             // Sum the total amounts, returning 0 if no invoices exist
             return invoices.Any() ? invoices.Sum(i => i.TotalAmount) : 0m;
         }
-        
-        /// <summary>
-        /// Calculates the total paid amount for an order
-        /// </summary>
-        /// <param name="orderId">The order ID</param>
-        /// <returns>Total paid amount</returns>
+
         public decimal CalculateTotalPaidAmountForOrder(int orderId)
         {
             // Handle case where no invoices exist for the order
@@ -1099,16 +966,7 @@ namespace HearingClinicManagementSystem.Data
             // Sum the total amounts, returning 0 if no invoices exist
             return invoices.Any() ? invoices.Sum(i => i.TotalAmount) : 0m;
         }
-       
-        
-        /// <summary>
-        /// Creates a new invoice for an appointment
-        /// </summary>
-        /// <param name="appointmentId">The appointment ID</param>
-        /// <param name="amount">Payment amount</param>
-        /// <param name="paymentMethod">Payment method (Cash, Credit Card, etc.)</param>
-        /// <param name="userId">ID of user creating the invoice</param>
-        /// <returns>The ID of the newly created invoice</returns>
+
         public int CreateAppointmentInvoice(int appointmentId, decimal amount, string paymentMethod, int userId)
         {
             using (var transaction = _context.Database.BeginTransaction())
@@ -1165,15 +1023,7 @@ namespace HearingClinicManagementSystem.Data
                 }
             }
         }
-        
-        /// <summary>
-        /// Creates a new invoice for an order
-        /// </summary>
-        /// <param name="orderId">The order ID</param>
-        /// <param name="amount">Payment amount</param>
-        /// <param name="paymentMethod">Payment method (Cash, Credit Card, etc.)</param>
-        /// <param name="userId">ID of user creating the invoice</param>
-        /// <returns>The ID of the newly created invoice</returns>
+
         public int CreateOrderInvoice(int orderId, decimal amount, string paymentMethod, int userId)
         {
             using (var transaction = _context.Database.BeginTransaction())
@@ -1233,12 +1083,7 @@ namespace HearingClinicManagementSystem.Data
                 }
             }
         }
-        
-        /// <summary>
-        /// Gets the user who received a payment
-        /// </summary>
-        /// <param name="paymentId">The payment ID</param>
-        /// <returns>The user who received the payment</returns>
+
         public User GetPaymentReceivedByUser(int paymentId)
         {
             var payment = _context.Payments
@@ -1249,74 +1094,12 @@ namespace HearingClinicManagementSystem.Data
                 
             return _context.Users.Find(payment.ReceivedBy);
         }
-        
-        /// <summary>
-        /// Gets the count of order items for an order
-        /// </summary>
-        /// <param name="orderId">The order ID</param>
-        /// <returns>Number of items in the order</returns>
+
         public int GetOrderItemCount(int orderId)
         {
             return _context.OrderItems.Count(oi => oi.OrderID == orderId);
         }
 
-        // Seed data method
-        public void SeedInitialData()
-        {
-            // Only seed if database is empty
-            if (_context.Users.Any())
-                return;
-
-            // Get data from StaticDataProvider
-            var users = StaticDataProvider.Users;
-            var patients = StaticDataProvider.Patients;
-            var audiologists = StaticDataProvider.Audiologists;
-            var receptionists = StaticDataProvider.Receptionists;
-            var inventoryManagers = StaticDataProvider.InventoryManagers;
-            var clinicManagers = StaticDataProvider.ClinicManagers;
-            var products = StaticDataProvider.Products;
-            // ... add other entities as needed
-
-            // Add to context
-            _context.Users.AddRange(users);
-            _context.SaveChanges();
-
-            // Need to clear navigation properties first since we're seeding data
-            foreach (var patient in patients)
-            {
-                patient.User = null;
-            }
-            _context.Patients.AddRange(patients);
-
-            foreach (var audiologist in audiologists)
-            {
-                audiologist.User = null;
-            }
-            _context.Audiologists.AddRange(audiologists);
-
-            foreach (var receptionist in receptionists)
-            {
-                receptionist.User = null;
-            }
-            _context.Receptionists.AddRange(receptionists);
-
-            foreach (var manager in inventoryManagers)
-            {
-                manager.User = null;
-            }
-            _context.InventoryManagers.AddRange(inventoryManagers);
-
-            foreach (var manager in clinicManagers)
-            {
-                manager.User = null;
-            }
-            _context.ClinicManagers.AddRange(clinicManagers);
-
-            _context.Products.AddRange(products);
-            _context.SaveChanges();
-
-            // Continue with other entities...
-        }
 
         #region Updated Clinic Statistics Repository Methods
 

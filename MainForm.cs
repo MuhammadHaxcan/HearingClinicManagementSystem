@@ -58,7 +58,7 @@ namespace HearingClinicManagementSystem
                 if (!context.Database.Exists())
                 {
                     context.Database.Create();
-                    repository.SeedInitialData();
+                    //repository.SeedInitialData();
                 }
             }
         }

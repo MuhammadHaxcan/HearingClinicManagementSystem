@@ -60,7 +60,6 @@
     <Compile Include="Data\HearingClinicDbContext.cs" />
     <Compile Include="Data\HearingClinicDbInitializer.cs" />
     <Compile Include="Data\HearingClinicRepository.cs" />
-    <Compile Include="Data\StaticDataProvider.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
