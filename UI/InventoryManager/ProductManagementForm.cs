@@ -10,10 +10,8 @@ using HearingClinicManagementSystem.Services;
 using HearingClinicManagementSystem.UI.Common.HearingClinicManagementSystem.UI.Common;
 using HearingClinicManagementSystem.UI.Constants;
 
-namespace HearingClinicManagementSystem.UI.InventoryManager
-{
-    public class ProductManagementForm : BaseForm
-    {
+namespace HearingClinicManagementSystem.UI.InventoryManager {
+    public class ProductManagementForm : BaseForm {
         #region Fields
         private DataGridView dgvProducts;
         private Panel pnlProductDetails;
@@ -25,7 +23,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
         private Button btnRefresh;
         private Button btnAddStock;
         private Button btnRemoveStock;
-        
+
         // Product details fields
         private TextBox txtProductId;
         private TextBox txtManufacturer;
@@ -33,26 +31,26 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
         private TextBox txtFeatures;
         private NumericUpDown nudPrice;
         private NumericUpDown nudQuantity;
-        
+
         // Inventory transaction fields
         private NumericUpDown nudTransactionQuantity;
         private ComboBox cmbTransactionType;
         private TextBox txtTransactionReason;
-        
+
         private bool isEditMode = false;
         private bool isNewProduct = false;
         private int? selectedProductId = null;
+        private HearingClinicRepository repository;
         #endregion
 
-        public ProductManagementForm()
-        {
+        public ProductManagementForm() {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
-            LoadProducts();
+            LoadProductInventory();
         }
 
         #region UI Setup
-        private void InitializeComponents()
-        {
+        private void InitializeComponents() {
             this.Text = "Product Management";
             this.Size = new Size(1200, 800);
 
@@ -61,8 +59,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             lblTitle.Dock = DockStyle.Top;
 
             // Main layout with 2 columns
-            mainLayout = new TableLayoutPanel
-            {
+            mainLayout = new TableLayoutPanel {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 2,
@@ -93,34 +90,29 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             Controls.Add(lblTitle);
         }
 
-        private Panel CreateProductsPanel()
-        {
-            Panel panel = new Panel
-            {
+        private Panel CreateProductsPanel() {
+            Panel panel = new Panel {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(0),
                 BackColor = Color.White
             };
 
             // Create panel header with title and buttons
-            Panel headerPanel = new Panel
-            {
+            Panel headerPanel = new Panel {
                 Dock = DockStyle.Top,
                 Height = 50,
                 BackColor = Color.FromArgb(248, 249, 250),
                 Padding = new Padding(10, 5, 10, 5)
             };
 
-            Label lblHeader = new Label
-            {
+            Label lblHeader = new Label {
                 Text = "Products Inventory",
                 Font = new Font(DefaultFont.FontFamily, 12, FontStyle.Bold),
                 Location = new Point(10, 15),
                 AutoSize = true
             };
 
-            btnRefresh = new Button
-            {
+            btnRefresh = new Button {
                 Text = "Refresh",
                 Size = new Size(100, 30),
                 Location = new Point(headerPanel.Width - 120, 10),
@@ -129,8 +121,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             btnRefresh.Click += BtnRefresh_Click;
             ApplyButtonStyle(btnRefresh, Color.FromArgb(108, 117, 125));
 
-            btnAddProduct = new Button
-            {
+            btnAddProduct = new Button {
                 Text = "Add New Product",
                 Size = new Size(140, 30),
                 Location = new Point(headerPanel.Width - 270, 10),
@@ -144,8 +135,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             headerPanel.Controls.Add(btnAddProduct);
 
             // Create products grid
-            dgvProducts = new DataGridView
-            {
+            dgvProducts = new DataGridView {
                 Dock = DockStyle.Fill,
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.None,
@@ -192,26 +182,22 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             return panel;
         }
 
-        private Panel CreateProductDetailsPanel()
-        {
-            Panel panel = new Panel
-            {
+        private Panel CreateProductDetailsPanel() {
+            Panel panel = new Panel {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(0),
                 BackColor = Color.White
             };
 
             // Create panel header
-            Panel headerPanel = new Panel
-            {
+            Panel headerPanel = new Panel {
                 Dock = DockStyle.Top,
                 Height = 40,
                 BackColor = Color.FromArgb(248, 249, 250),
                 Padding = new Padding(10, 5, 10, 5)
             };
 
-            Label lblHeader = new Label
-            {
+            Label lblHeader = new Label {
                 Text = "Product Details",
                 Font = new Font(DefaultFont.FontFamily, 11, FontStyle.Bold),
                 Location = new Point(10, 10),
@@ -220,8 +206,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             headerPanel.Controls.Add(lblHeader);
 
             // Create details form layout
-            TableLayoutPanel detailsLayout = new TableLayoutPanel
-            {
+            TableLayoutPanel detailsLayout = new TableLayoutPanel {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(15, 10, 15, 10),
                 ColumnCount = 2,
@@ -258,8 +243,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             // Price
             detailsLayout.Controls.Add(new Label { Text = "Price ($):", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, rowIndex);
-            nudPrice = new NumericUpDown
-            {
+            nudPrice = new NumericUpDown {
                 Dock = DockStyle.Fill,
                 Minimum = 0,
                 Maximum = 9999.99M,
@@ -271,8 +255,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             // Quantity
             detailsLayout.Controls.Add(new Label { Text = "Quantity:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, rowIndex);
-            nudQuantity = new NumericUpDown
-            {
+            nudQuantity = new NumericUpDown {
                 Dock = DockStyle.Fill,
                 Minimum = 0,
                 Maximum = 1000,
@@ -282,15 +265,13 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             detailsLayout.Controls.Add(nudQuantity, 1, rowIndex++);
 
             // Button panel
-            Panel buttonPanel = new Panel
-            {
+            Panel buttonPanel = new Panel {
                 Dock = DockStyle.Bottom,
                 Height = 50,
                 BackColor = Color.FromArgb(248, 249, 250)
             };
 
-            btnSaveProduct = new Button
-            {
+            btnSaveProduct = new Button {
                 Text = "Save",
                 Size = new Size(100, 35),
                 Location = new Point(buttonPanel.Width - 220, 8),
@@ -300,8 +281,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             btnSaveProduct.Click += BtnSaveProduct_Click;
             ApplyButtonStyle(btnSaveProduct, Color.FromArgb(0, 123, 255));
 
-            btnCancelEdit = new Button
-            {
+            btnCancelEdit = new Button {
                 Text = "Cancel",
                 Size = new Size(100, 35),
                 Location = new Point(buttonPanel.Width - 110, 8),
@@ -325,26 +305,22 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             return panel;
         }
 
-        private Panel CreateInventoryTransactionPanel()
-        {
-            Panel panel = new Panel
-            {
+        private Panel CreateInventoryTransactionPanel() {
+            Panel panel = new Panel {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(0),
                 BackColor = Color.White
             };
 
             // Create panel header
-            Panel headerPanel = new Panel
-            {
+            Panel headerPanel = new Panel {
                 Dock = DockStyle.Top,
                 Height = 40,
                 BackColor = Color.FromArgb(248, 249, 250),
                 Padding = new Padding(10, 5, 10, 5)
             };
 
-            Label lblHeader = new Label
-            {
+            Label lblHeader = new Label {
                 Text = "Inventory Transaction",
                 Font = new Font(DefaultFont.FontFamily, 11, FontStyle.Bold),
                 Location = new Point(10, 10),
@@ -353,8 +329,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             headerPanel.Controls.Add(lblHeader);
 
             // Create transaction form layout
-            TableLayoutPanel transactionLayout = new TableLayoutPanel
-            {
+            TableLayoutPanel transactionLayout = new TableLayoutPanel {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(15, 10, 15, 10),
                 ColumnCount = 2,
@@ -369,8 +344,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             // Transaction Type
             transactionLayout.Controls.Add(new Label { Text = "Transaction:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, rowIndex);
-            cmbTransactionType = new ComboBox
-            {
+            cmbTransactionType = new ComboBox {
                 Dock = DockStyle.Fill,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
@@ -380,8 +354,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             // Quantity
             transactionLayout.Controls.Add(new Label { Text = "Quantity:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, rowIndex);
-            nudTransactionQuantity = new NumericUpDown
-            {
+            nudTransactionQuantity = new NumericUpDown {
                 Dock = DockStyle.Fill,
                 Minimum = 1,
                 Maximum = 1000,
@@ -392,8 +365,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             // Reason/Notes
             transactionLayout.Controls.Add(new Label { Text = "Reason:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, rowIndex);
-            txtTransactionReason = new TextBox
-            {
+            txtTransactionReason = new TextBox {
                 Dock = DockStyle.Fill,
                 Multiline = true,
                 Height = 60,
@@ -402,15 +374,13 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             transactionLayout.Controls.Add(txtTransactionReason, 1, rowIndex++);
 
             // Button panel
-            Panel buttonPanel = new Panel
-            {
+            Panel buttonPanel = new Panel {
                 Dock = DockStyle.Bottom,
                 Height = 50,
                 BackColor = Color.FromArgb(248, 249, 250)
             };
 
-            btnAddStock = new Button
-            {
+            btnAddStock = new Button {
                 Text = "Add Stock",
                 Size = new Size(120, 35),
                 Location = new Point(buttonPanel.Width - 240, 8),
@@ -420,8 +390,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             btnAddStock.Click += BtnAddStock_Click;
             ApplyButtonStyle(btnAddStock, Color.FromArgb(40, 167, 69));
 
-            btnRemoveStock = new Button
-            {
+            btnRemoveStock = new Button {
                 Text = "Remove Stock",
                 Size = new Size(120, 35),
                 Location = new Point(buttonPanel.Width - 110, 8),
@@ -442,8 +411,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             return panel;
         }
 
-        private void ApplyButtonStyle(Button button, Color baseColor)
-        {
+        private void ApplyButtonStyle(Button button, Color baseColor) {
             button.ForeColor = Color.White;
             button.BackColor = baseColor;
             button.FlatStyle = FlatStyle.Flat;
@@ -464,13 +432,11 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
         #endregion
 
         #region Event Handlers
-        private void DgvProducts_SelectionChanged(object sender, EventArgs e)
-        {
+        private void DgvProducts_SelectionChanged(object sender, EventArgs e) {
             if (isEditMode)
                 return; // Don't change selection during edit mode
 
-            if (dgvProducts.SelectedRows.Count > 0)
-            {
+            if (dgvProducts.SelectedRows.Count > 0) {
                 var selectedRow = dgvProducts.SelectedRows[0];
                 selectedProductId = (int)selectedRow.Cells["ProductID"].Value;
 
@@ -485,9 +451,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 // Enable inventory transaction buttons
                 btnAddStock.Enabled = true;
                 btnRemoveStock.Enabled = true;
-            }
-            else
-            {
+            } else {
                 ClearProductDetails();
                 selectedProductId = null;
                 btnAddStock.Enabled = false;
@@ -495,29 +459,22 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             }
         }
 
-        private void DgvProducts_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
-        {
-            if (e.RowIndex >= 0)
-            {
+        private void DgvProducts_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e) {
+            if (e.RowIndex >= 0) {
                 DataGridViewRow row = dgvProducts.Rows[e.RowIndex];
 
                 // Format price as currency
-                if (e.ColumnIndex == dgvProducts.Columns["Price"].Index && e.Value != null)
-                {
-                    if (decimal.TryParse(e.Value.ToString(), out decimal price))
-                    {
+                if (e.ColumnIndex == dgvProducts.Columns["Price"].Index && e.Value != null) {
+                    if (decimal.TryParse(e.Value.ToString(), out decimal price)) {
                         e.Value = string.Format("${0:N2}", price);
                         e.FormattingApplied = true;
                     }
                 }
 
                 // Highlight low stock (less than 5 items)
-                if (e.ColumnIndex == dgvProducts.Columns["QuantityInStock"].Index && e.Value != null)
-                {
-                    if (int.TryParse(e.Value.ToString(), out int quantity))
-                    {
-                        if (quantity <= 5)
-                        {
+                if (e.ColumnIndex == dgvProducts.Columns["QuantityInStock"].Index && e.Value != null) {
+                    if (int.TryParse(e.Value.ToString(), out int quantity)) {
+                        if (quantity <= 5) {
                             e.CellStyle.ForeColor = Color.Red;
                             e.CellStyle.Font = new Font(dgvProducts.Font, FontStyle.Bold);
                         }
@@ -525,37 +482,27 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 }
 
                 // Alternate row coloring for better readability
-                if (e.RowIndex % 2 == 0)
-                {
+                if (e.RowIndex % 2 == 0) {
                     row.DefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
-                }
-                else
-                {
+                } else {
                     row.DefaultCellStyle.BackColor = Color.White;
                 }
             }
         }
 
-        private void BtnRefresh_Click(object sender, EventArgs e)
-        {
-            if (isEditMode)
-            {
-                if (UIService.ShowQuestion("You have unsaved changes. Do you want to discard them and refresh?") == DialogResult.Yes)
-                {
+        private void BtnRefresh_Click(object sender, EventArgs e) {
+            if (isEditMode) {
+                if (UIService.ShowQuestion("You have unsaved changes. Do you want to discard them and refresh?") == DialogResult.Yes) {
                     CancelEdit();
-                    LoadProducts();
+                    LoadProductInventory();
                 }
-            }
-            else
-            {
-                LoadProducts();
+            } else {
+                LoadProductInventory();
             }
         }
 
-        private void BtnAddProduct_Click(object sender, EventArgs e)
-        {
-            if (isEditMode)
-            {
+        private void BtnAddProduct_Click(object sender, EventArgs e) {
+            if (isEditMode) {
                 UIService.ShowWarning("Please save or cancel the current operation first.");
                 return;
             }
@@ -568,15 +515,15 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             // Clear and enable form fields
             ClearProductDetails();
             SetDetailsFieldsReadOnly(false);
-            
+
             // Hide ID for new product
             txtProductId.Text = "(New Product)";
             txtProductId.BackColor = Color.LightYellow;
-            
+
             // Enable save/cancel buttons
             btnSaveProduct.Enabled = true;
             btnCancelEdit.Enabled = true;
-            
+
             // Disable other operations
             btnAddProduct.Enabled = false;
             btnAddStock.Enabled = false;
@@ -584,34 +531,24 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             dgvProducts.Enabled = false;
         }
 
-        private void BtnSaveProduct_Click(object sender, EventArgs e)
-        {
+        private void BtnSaveProduct_Click(object sender, EventArgs e) {
             // Validate required fields
-            if (string.IsNullOrWhiteSpace(txtManufacturer.Text))
-            {
+            if (string.IsNullOrWhiteSpace(txtManufacturer.Text)) {
                 UIService.ShowWarning("Manufacturer name is required.");
                 txtManufacturer.Focus();
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(txtModel.Text))
-            {
+            if (string.IsNullOrWhiteSpace(txtModel.Text)) {
                 UIService.ShowWarning("Model name is required.");
                 txtModel.Focus();
                 return;
             }
 
-            try
-            {
-                if (isNewProduct)
-                {
+            try {
+                if (isNewProduct) {
                     // Create a new product
-                    int newProductId = StaticDataProvider.Products.Count > 0 ? 
-                        StaticDataProvider.Products.Max(p => p.ProductID) + 1 : 1;
-
-                    var newProduct = new Product
-                    {
-                        ProductID = newProductId,
+                    var newProduct = new Product {
                         Manufacturer = txtManufacturer.Text,
                         Model = txtModel.Text,
                         Features = txtFeatures.Text,
@@ -619,23 +556,20 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                         QuantityInStock = (int)nudQuantity.Value
                     };
 
-                    // Add to data store
-                    StaticDataProvider.Products.Add(newProduct);
+                    // Add product using repository
+                    int newProductId = repository.AddProductForManager(newProduct);
+                    selectedProductId = newProductId;
 
                     // Record inventory transaction if initial quantity > 0
-                    if (nudQuantity.Value > 0)
-                    {
-                        RecordInventoryTransaction(newProductId, (int)nudQuantity.Value, "Initial stock");
+                    if (nudQuantity.Value > 0) {
+                        repository.AddStock(newProductId, (int)nudQuantity.Value, "Initial stock", AuthService.CurrentUser.UserID);
                     }
 
                     UIService.ShowSuccess("New product added successfully.");
-                }
-                else if (selectedProductId.HasValue)
-                {
+                } else if (selectedProductId.HasValue) {
                     // Update existing product
-                    var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == selectedProductId.Value);
-                    if (product != null)
-                    {
+                    var product = repository.GetProductByIdForManager(selectedProductId.Value);
+                    if (product != null) {
                         // Check if quantity changed
                         int oldQuantity = product.QuantityInStock;
                         int newQuantity = (int)nudQuantity.Value;
@@ -648,13 +582,14 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                         product.Price = nudPrice.Value;
                         product.QuantityInStock = newQuantity;
 
+                        // Update product using repository
+                        repository.UpdateProductForManager(product);
+
                         // Record inventory transaction if quantity changed
-                        if (quantityDifference != 0)
-                        {
-                            string reason = quantityDifference > 0 ?
-                                "Stock adjustment (increase)" : "Stock adjustment (decrease)";
-                            RecordInventoryTransaction(product.ProductID, Math.Abs(quantityDifference), 
-                                reason, quantityDifference > 0);
+                        if (quantityDifference > 0) {
+                            repository.AddStock(product.ProductID, quantityDifference, "Stock adjustment (increase)", AuthService.CurrentUser.UserID);
+                        } else if (quantityDifference < 0) {
+                            repository.RemoveStock(product.ProductID, Math.Abs(quantityDifference), "Stock adjustment (decrease)", AuthService.CurrentUser.UserID);
                         }
 
                         UIService.ShowSuccess("Product updated successfully.");
@@ -669,45 +604,35 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 btnCancelEdit.Enabled = false;
                 btnAddProduct.Enabled = true;
                 dgvProducts.Enabled = true;
-                
+
                 // Reload products
-                LoadProducts();
-            }
-            catch (Exception ex)
-            {
+                LoadProductInventory();
+            } catch (Exception ex) {
                 UIService.ShowError($"Error saving product: {ex.Message}");
             }
         }
 
-        private void BtnCancelEdit_Click(object sender, EventArgs e)
-        {
+        private void BtnCancelEdit_Click(object sender, EventArgs e) {
             CancelEdit();
         }
 
-        private void BtnAddStock_Click(object sender, EventArgs e)
-        {
+        private void BtnAddStock_Click(object sender, EventArgs e) {
             ProcessInventoryTransaction(true);
         }
 
-        private void BtnRemoveStock_Click(object sender, EventArgs e)
-        {
+        private void BtnRemoveStock_Click(object sender, EventArgs e) {
             ProcessInventoryTransaction(false);
         }
         #endregion
 
         #region Helper Methods
-        private void LoadProducts()
-        {
+        private void LoadProductInventory() {
             dgvProducts.Rows.Clear();
 
-            // Get all products ordered by manufacturer and model
-            var products = StaticDataProvider.Products
-                .OrderBy(p => p.Manufacturer)
-                .ThenBy(p => p.Model)
-                .ToList();
+            // Get products using repository method
+            var products = repository.GetProductsOrderedByManufacturerAndModel();
 
-            foreach (var product in products)
-            {
+            foreach (var product in products) {
                 dgvProducts.Rows.Add(
                     product.ProductID,
                     product.Manufacturer,
@@ -719,12 +644,9 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             }
 
             // Select previously selected product if it still exists
-            if (selectedProductId.HasValue)
-            {
-                foreach (DataGridViewRow row in dgvProducts.Rows)
-                {
-                    if ((int)row.Cells["ProductID"].Value == selectedProductId.Value)
-                    {
+            if (selectedProductId.HasValue) {
+                foreach (DataGridViewRow row in dgvProducts.Rows) {
+                    if ((int)row.Cells["ProductID"].Value == selectedProductId.Value) {
                         row.Selected = true;
                         dgvProducts.FirstDisplayedScrollingRowIndex = row.Index;
                         break;
@@ -733,49 +655,43 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             }
         }
 
-        private void CancelEdit()
-        {
+        private void CancelEdit() {
             isEditMode = false;
             isNewProduct = false;
-            
+
             // Re-enable controls
             dgvProducts.Enabled = true;
             btnAddProduct.Enabled = true;
-            
+
             // Disable edit mode buttons
             btnSaveProduct.Enabled = false;
             btnCancelEdit.Enabled = false;
-            
+
             // Set fields to read-only
             SetDetailsFieldsReadOnly(true);
-            
+
             // Restore selected product details or clear if none selected
-            if (selectedProductId.HasValue)
-            {
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == selectedProductId.Value);
-                if (product != null)
-                {
+            if (selectedProductId.HasValue) {
+                var product = repository.GetProductById(selectedProductId.Value);
+                if (product != null) {
                     txtProductId.Text = product.ProductID.ToString();
                     txtManufacturer.Text = product.Manufacturer;
                     txtModel.Text = product.Model;
                     txtFeatures.Text = product.Features;
                     nudPrice.Value = product.Price;
                     nudQuantity.Value = product.QuantityInStock;
-                    
+
                     btnAddStock.Enabled = true;
                     btnRemoveStock.Enabled = true;
                 }
-            }
-            else
-            {
+            } else {
                 ClearProductDetails();
                 btnAddStock.Enabled = false;
                 btnRemoveStock.Enabled = false;
             }
         }
 
-        private void ClearProductDetails()
-        {
+        private void ClearProductDetails() {
             txtProductId.Text = string.Empty;
             txtManufacturer.Text = string.Empty;
             txtModel.Text = string.Empty;
@@ -785,15 +701,14 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             txtProductId.BackColor = Color.LightGray;
         }
 
-        private void SetDetailsFieldsReadOnly(bool readOnly)
-        {
+        private void SetDetailsFieldsReadOnly(bool readOnly) {
             // Product ID is always read-only
             txtManufacturer.ReadOnly = readOnly;
             txtModel.ReadOnly = readOnly;
             txtFeatures.ReadOnly = readOnly;
             nudPrice.Enabled = !readOnly;
             nudQuantity.Enabled = !readOnly;
-            
+
             // Set background colors for better UX
             Color bgColor = readOnly ? SystemColors.Control : SystemColors.Window;
             txtManufacturer.BackColor = bgColor;
@@ -801,116 +716,45 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             txtFeatures.BackColor = bgColor;
         }
 
-        private void ProcessInventoryTransaction(bool isAddition)
-        {
-            if (!selectedProductId.HasValue)
-            {
+        private void ProcessInventoryTransaction(bool isAddition) {
+            if (!selectedProductId.HasValue) {
                 UIService.ShowWarning("Please select a product first.");
                 return;
             }
 
             // Validate quantity
             int quantity = (int)nudTransactionQuantity.Value;
-            if (quantity <= 0)
-            {
+            if (quantity <= 0) {
                 UIService.ShowWarning("Please enter a valid quantity greater than zero.");
                 nudTransactionQuantity.Focus();
                 return;
             }
 
             // Validate reason
-            if (string.IsNullOrWhiteSpace(txtTransactionReason.Text))
-            {
+            if (string.IsNullOrWhiteSpace(txtTransactionReason.Text)) {
                 UIService.ShowWarning("Please provide a reason for this transaction.");
                 txtTransactionReason.Focus();
                 return;
             }
 
-            // Get the product
-            var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == selectedProductId.Value);
-            if (product == null)
-            {
-                UIService.ShowError("Could not find the selected product.");
-                return;
-            }
-
-            // For removals, check if enough stock is available
-            if (!isAddition && product.QuantityInStock < quantity)
-            {
-                UIService.ShowWarning($"Cannot remove {quantity} items. Only {product.QuantityInStock} are in stock.");
-                return;
-            }
-
-            try
-            {
-                // Update product quantity
-                if (isAddition)
-                {
-                    product.QuantityInStock += quantity;
+            try {
+                // Process stock change using repository
+                if (isAddition) {
+                    repository.AddStock(selectedProductId.Value, quantity, txtTransactionReason.Text, AuthService.CurrentUser.UserID);
+                } else {
+                    repository.RemoveStock(selectedProductId.Value, quantity, txtTransactionReason.Text, AuthService.CurrentUser.UserID);
                 }
-                else
-                {
-                    product.QuantityInStock -= quantity;
-                }
-
-                // Record transaction
-                RecordInventoryTransaction(product.ProductID, quantity, txtTransactionReason.Text, isAddition);
 
                 // Show success message
                 string action = isAddition ? "added to" : "removed from";
                 UIService.ShowSuccess($"{quantity} items {action} inventory successfully.");
 
                 // Update UI
-                LoadProducts();
+                LoadProductInventory();
                 txtTransactionReason.Text = string.Empty;
                 nudTransactionQuantity.Value = 1;
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 UIService.ShowError($"Error processing inventory transaction: {ex.Message}");
-            }
-        }
-
-        private void RecordInventoryTransaction(int productId, int quantity, string reason, bool isAddition = true)
-        {
-            try
-            {
-                // Create new inventory transaction
-                int newTransactionId = StaticDataProvider.InventoryTransactions.Count > 0 ?
-                    StaticDataProvider.InventoryTransactions.Max(t => t.TransactionID) + 1 : 1;
-
-                // Determine the correct transaction type based on the operation
-                string transactionType;
-                if (isAddition)
-                {
-                    transactionType = "Restock";
-                }
-                else
-                {
-                    // Check reason to determine if it's a sale or adjustment
-                    transactionType = reason.ToLower().Contains("sale") || 
-                                     reason.ToLower().Contains("sold") || 
-                                     reason.ToLower().Contains("purchase") ? 
-                                     "Sale" : "Adjustment";
-                }
-
-                // Create the transaction using the correct model properties
-                var transaction = new InventoryTransaction
-                {
-                    TransactionID = newTransactionId,
-                    ProductID = productId,
-                    TransactionType = transactionType, // Use valid transaction type from model: Restock, Sale, Adjustment
-                    Quantity = quantity,
-                    TransactionDate = DateTime.Now,
-                    ProcessedBy = AuthService.CurrentUser.UserID // Use the correct property name
-                };
-
-                // Add to data store
-                StaticDataProvider.InventoryTransactions.Add(transaction);
-            }
-            catch (Exception ex)
-            {
-                UIService.ShowError($"Error recording inventory transaction: {ex.Message}");
             }
         }
         #endregion

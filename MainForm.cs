@@ -29,11 +29,38 @@ namespace HearingClinicManagementSystem
             InitializeLayout();
             InitializeSidebar();
 
-            // Initialize static data
-            StaticDataProvider.Initialize();
+            // Initialize database and seed data if needed
+            try
+            {
+                InitializeDatabase();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error connecting to database: {ex.Message}", "Database Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
 
             // Show the dashboard by default
             OpenForm(new DashboardForm());
+        }
+
+        private void InitializeDatabase()
+        {
+            // Enable migrations
+            System.Data.Entity.Database.SetInitializer(new HearingClinicDbInitializer());
+
+            // Initialize the repository (which creates the context)
+            var repository = HearingClinicRepository.Instance;
+            
+            // Create/verify database and seed initial data if needed
+            using (var context = new HearingClinicDbContext())
+            {
+                if (!context.Database.Exists())
+                {
+                    context.Database.Create();
+                    repository.SeedInitialData();
+                }
+            }
         }
 
         #region UI Setup
@@ -214,16 +241,16 @@ namespace HearingClinicManagementSystem
         private void AddInventoryManagerMenuItems()
         {
             // Future inventory manager menu items will be added here
-            AddSidebarButton("Update Inventory", () => OpenForm(new UI.ClinicManager.ProductManagementForm()));
-            AddSidebarButton("Order Management", () => OpenForm(new UI.ClinicManager.OrderManagementForm()));
+            AddSidebarButton("Update Inventory", () => OpenForm(new UI.InventoryManager.ProductManagementForm()));
+            AddSidebarButton("Order Management", () => OpenForm(new UI.InventoryManager.OrderManagementForm()));
 
         }
 
         private void AddClinicManagerMenuItems()
         {
             // Future clinic manager menu items will be added here
-            AddSidebarButton("Inventory Reports", () => OpenForm(new UI.Admin.InventoryReportingForm()));
-            AddSidebarButton("Clinic Reports", () => OpenForm(new UI.Admin.ClinicStatisticsForm()));
+            AddSidebarButton("Inventory Reports", () => OpenForm(new UI.ClinicManager.InventoryReportingForm()));
+            AddSidebarButton("Clinic Reports", () => OpenForm(new UI.ClinicManager.ClinicStatisticsForm()));
         }
         #endregion
 

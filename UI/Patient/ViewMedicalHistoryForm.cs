@@ -23,11 +23,13 @@ namespace HearingClinicManagementSystem.UI.Patient
         private DataGridView dgvTestDetails;
         private DataGridView dgvPrescriptions;
         private RichTextBox rtbDiagnosis;
-        private RichTextBox rtbRecommendations; // Changed to RichTextBox for word wrapping
+        private RichTextBox rtbRecommendations;
+        private HearingClinicRepository repository;
         #endregion
 
         public ViewMedicalHistoryForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadMedicalHistory();
         }
@@ -206,7 +208,6 @@ namespace HearingClinicManagementSystem.UI.Patient
         private void InitializeTestsPanel(TableLayoutPanel parent)
         {
             // === TEST DETAILS PANEL (Bottom-Right) ===
-            // Renamed from "InitializePrescriptionPanel" to "InitializeTestsPanel"
             Panel pnlTestDetails = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -356,34 +357,36 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            var patientRecords = StaticDataProvider.MedicalRecords
-                .Where(mr => mr.PatientID == AuthService.CurrentPatient.PatientID)
-                .OrderByDescending(mr => mr.RecordDate);
-
-            foreach (var record in patientRecords)
+            try
             {
-                var appointment = StaticDataProvider.Appointments
-                    .FirstOrDefault(a => a.AppointmentID == record.AppointmentID);
+                // Get patient records from repository
+                var patientRecords = repository.GetMedicalRecordsByPatientId(AuthService.CurrentPatient.PatientID);
 
-                if (appointment != null)
+                if (patientRecords.Count == 0)
                 {
-                    var audiologist = StaticDataProvider.Audiologists
-                        .FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
+                    MessageBox.Show("No medical records found for this patient", "Information", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
 
-                    var tests = StaticDataProvider.HearingTests
-                        .Where(ht => ht.RecordID == record.RecordID);
-
+                foreach (var record in patientRecords)
+                {
+                    // Get tests for this record
+                    var tests = repository.GetHearingTestsByRecordId(record.RecordID);
                     string testTypes = string.Join(", ", tests.Select(t => t.TestType));
-                    string doctorName = "Unknown";
 
-                    if (audiologist != null && audiologist.User != null)
+                    // Get doctor name
+                    string doctorName = "Unknown";
+                    if (record.Appointment?.Audiologist?.User != null)
                     {
+                        var audiologist = record.Appointment.Audiologist;
                         doctorName = $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}";
                     }
 
+                    // Get brief diagnosis
                     string briefDiagnosis = record.Diagnosis?.Length > 50
                         ? record.Diagnosis.Substring(0, 50) + "..."
-                        : record.Diagnosis;
+                        : record.Diagnosis ?? "No diagnosis provided";
 
                     dgvMedicalHistory.Rows.Add(
                         record.RecordID,
@@ -393,68 +396,93 @@ namespace HearingClinicManagementSystem.UI.Patient
                         briefDiagnosis
                     );
                 }
-            }
 
-            // Select first row if available
-            if (dgvMedicalHistory.Rows.Count > 0)
-            {
-                dgvMedicalHistory.Rows[0].Selected = true;
+                // Select first row if available
+                if (dgvMedicalHistory.Rows.Count > 0)
+                {
+                    dgvMedicalHistory.Rows[0].Selected = true;
+                }
+                else
+                {
+                    ClearDetailPanels();
+                }
             }
-            else
+            catch (Exception ex)
             {
+                MessageBox.Show($"Error loading medical history: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ClearDetailPanels();
             }
         }
 
         private void LoadRecordDetails(int recordId)
         {
-            var record = StaticDataProvider.MedicalRecords.FirstOrDefault(r => r.RecordID == recordId);
-            if (record == null)
+            try
             {
+                var record = repository.GetMedicalRecordById(recordId);
+                if (record == null)
+                {
+                    ClearDetailPanels();
+                    return;
+                }
+
+                // Load Diagnosis
+                rtbDiagnosis.Text = record.Diagnosis ?? "No diagnosis provided.";
+
+                // Load Treatment Plan in RichTextBox with word wrap
+                rtbRecommendations.Clear();
+                if (!string.IsNullOrWhiteSpace(record.TreatmentPlan))
+                {
+                    rtbRecommendations.Text = record.TreatmentPlan;
+                }
+                else
+                {
+                    rtbRecommendations.Text = "No treatment plan provided.";
+                }
+
+                // Load Test Results
+                LoadTestResults(recordId);
+
+                // Load Prescriptions
+                LoadPrescriptions(record.AppointmentID);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading record details: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ClearDetailPanels();
-                return;
             }
-
-            // Load Diagnosis
-            rtbDiagnosis.Text = record.Diagnosis ?? "No diagnosis provided.";
-
-            // Load Treatment Plan in RichTextBox with word wrap
-            rtbRecommendations.Clear();
-            if (!string.IsNullOrWhiteSpace(record.TreatmentPlan))
-            {
-                rtbRecommendations.Text = record.TreatmentPlan;
-            }
-            else
-            {
-                rtbRecommendations.Text = "No treatment plan provided.";
-            }
-
-            // Load Test Results - now without Results column
-            LoadTestResults(recordId);
-
-            // Load Prescriptions
-            LoadPrescriptions(record.AppointmentID);
         }
 
         private void LoadTestResults(int recordId)
         {
             dgvTestDetails.Rows.Clear();
 
-            var tests = StaticDataProvider.HearingTests.Where(ht => ht.RecordID == recordId);
-            if (tests.Any())
+            try
             {
-                foreach (var test in tests)
+                var tests = repository.GetHearingTestsByRecordId(recordId);
+                
+                if (tests.Any())
                 {
-                    // Only adding TestType and Notes columns
-                    dgvTestDetails.Rows.Add(
-                        test.TestType,
-                        test.TestNotes ?? "No notes"
-                    );
+                    foreach (var test in tests)
+                    {
+                        // Only adding TestType and Notes columns
+                        dgvTestDetails.Rows.Add(
+                            test.TestType,
+                            test.TestNotes ?? "No notes"
+                        );
+                    }
+                }
+                else
+                {
+                    dgvTestDetails.Rows.Add("No tests", "No test data available");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                dgvTestDetails.Rows.Add("No tests", "No test data available");
+                MessageBox.Show($"Error loading test results: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                dgvTestDetails.Rows.Add("Error", "Failed to load test data");
             }
         }
 
@@ -462,26 +490,36 @@ namespace HearingClinicManagementSystem.UI.Patient
         {
             dgvPrescriptions.Rows.Clear();
 
-            var prescriptions = StaticDataProvider.Prescriptions.Where(p => p.AppointmentID == appointmentId);
-            if (prescriptions.Any())
+            try
             {
-                foreach (var prescription in prescriptions)
+                var prescriptions = repository.GetPrescriptionsByAppointmentId(appointmentId);
+                
+                if (prescriptions.Any())
                 {
-                    var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == prescription.ProductID);
-                    string productName = product != null ? $"{product.Manufacturer} {product.Model}" : "Unknown Product";
+                    foreach (var prescription in prescriptions)
+                    {
+                        var product = prescription.Product;
+                        string productName = product != null ? $"{product.Manufacturer} {product.Model}" : "Unknown Product";
 
-                    // Extract product features as description
-                    string description = product != null ? product.Features : "No description";
+                        // Extract product features as description
+                        string description = product?.Features ?? "No description";
 
-                    dgvPrescriptions.Rows.Add(
-                        productName,
-                        description
-                    );
+                        dgvPrescriptions.Rows.Add(
+                            productName,
+                            description
+                        );
+                    }
+                }
+                else
+                {
+                    dgvPrescriptions.Rows.Add("No prescriptions", "No prescribed products for this visit");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                dgvPrescriptions.Rows.Add("No prescriptions", "No prescribed products for this visit");
+                MessageBox.Show($"Error loading prescriptions: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                dgvPrescriptions.Rows.Add("Error", "Failed to load prescription data");
             }
         }
 

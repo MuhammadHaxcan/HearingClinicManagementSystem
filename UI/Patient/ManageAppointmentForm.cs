@@ -25,6 +25,8 @@ namespace HearingClinicManagementSystem.UI.Patient
         private TextBox txtPurpose;
         private Button btnBook;
         private Button btnCancel;
+        private List<HearingClinicManagementSystem.Models.Audiologist> audiologists;
+        private List<TimeSlot> availableTimeSlots;
         #endregion
 
         public ManageAppointmentForm()
@@ -88,8 +90,6 @@ namespace HearingClinicManagementSystem.UI.Patient
             dgvAppointments.Columns.Add("Status", "Status");
             dgvAppointments.Columns.Add("PaymentStatus", "Payment Status");
             dgvAppointments.Columns["AppointmentID"].Visible = false;
-
-            // Removed the blue separator line
 
             Panel pnlButtons = new Panel
             {
@@ -269,22 +269,39 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
+            int timeSlotId = GetSelectedTimeSlotId();
+            if (timeSlotId == -1)
+            {
+                UIService.ShowError("Invalid time slot selected");
+                return;
+            }
+
+            var repository = HearingClinicRepository.Instance;
+            
+            // Create new appointment
             var newAppointment = new Appointment
             {
-                AppointmentID = StaticDataProvider.Appointments.Count > 0 ?
-                    StaticDataProvider.Appointments.Max(a => a.AppointmentID) + 1 : 1,
                 PatientID = AuthService.CurrentPatient.PatientID,
-                AudiologistID = StaticDataProvider.Audiologists[cmbAudiologists.SelectedIndex].AudiologistID,
+                AudiologistID = audiologists[cmbAudiologists.SelectedIndex].AudiologistID,
                 CreatedBy = AuthService.CurrentPatient.UserID,
                 Date = dtpDate.Value,
-                TimeSlotID = GetSelectedTimeSlotId(),
+                TimeSlotID = timeSlotId,
                 PurposeOfVisit = txtPurpose.Text,
                 Status = "Pending",
                 Fee = 100.00m
             };
 
-            StaticDataProvider.Appointments.Add(newAppointment);
-            UpdateTimeSlotAvailability(newAppointment.TimeSlotID, false);
+            // Add appointment to database
+            repository.AddAppointment(newAppointment);
+
+            // Update time slot availability
+            var timeSlot = repository.GetTimeSlotById(timeSlotId);
+            if (timeSlot != null)
+            {
+                timeSlot.IsAvailable = false;
+                repository.UpdateTimeSlot(timeSlot);
+            }
+
             LoadAppointments();
             ResetBookingForm();
             UIService.ShowSuccess("Appointment booked successfully!");
@@ -307,11 +324,23 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            var selectedAppointment = StaticDataProvider.Appointments.FirstOrDefault(a => a.AppointmentID == appointmentId);
+            var repository = HearingClinicRepository.Instance;
+            var selectedAppointment = repository.GetAppointmentById(appointmentId);
+            
             if (selectedAppointment != null)
             {
+                // Update appointment status
                 selectedAppointment.Status = "Cancelled";
-                UpdateTimeSlotAvailability(selectedAppointment.TimeSlotID, true);
+                repository.UpdateAppointment(selectedAppointment);
+
+                // Make the time slot available again
+                var timeSlot = repository.GetTimeSlotById(selectedAppointment.TimeSlotID);
+                if (timeSlot != null)
+                {
+                    timeSlot.IsAvailable = true;
+                    repository.UpdateTimeSlot(timeSlot);
+                }
+
                 LoadAppointments();
                 LoadAvailableTimeSlots();
                 UIService.ShowSuccess("Appointment cancelled successfully");
@@ -350,17 +379,20 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            var patientAppointments = StaticDataProvider.Appointments
-                .Where(a => a.PatientID == AuthService.CurrentPatient.PatientID)
-                .OrderBy(a => a.Date);
+            var repository = HearingClinicRepository.Instance;
+            var patientAppointments = repository.GetAppointmentsByPatientId(AuthService.CurrentPatient.PatientID);
+
+            // Get all appointment IDs to retrieve invoices in a single query
+            var appointmentIds = patientAppointments.Select(a => a.AppointmentID).ToList();
+            var invoices = repository.GetInvoicesByAppointmentIds(appointmentIds);
 
             foreach (var appointment in patientAppointments)
             {
-                var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == appointment.TimeSlotID);
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
+                var timeSlot = appointment.TimeSlot;
+                var audiologist = appointment.Audiologist;
 
                 // Get payment status from invoice
-                var invoice = StaticDataProvider.Invoices.FirstOrDefault(i => i.AppointmentID == appointment.AppointmentID);
+                var invoice = invoices.FirstOrDefault(i => i.AppointmentID == appointment.AppointmentID);
                 string paymentStatus = invoice != null ? invoice.Status : "Not Invoiced";
 
                 if (timeSlot != null && audiologist != null && audiologist.User != null)
@@ -414,10 +446,15 @@ namespace HearingClinicManagementSystem.UI.Patient
         private void LoadAudiologists()
         {
             cmbAudiologists.Items.Clear();
-            foreach (var audiologist in StaticDataProvider.Audiologists)
+            
+            var repository = HearingClinicRepository.Instance;
+            audiologists = repository.GetAllAudiologists();
+            
+            foreach (var audiologist in audiologists)
             {
                 cmbAudiologists.Items.Add($"Dr. {audiologist.User.FirstName} {audiologist.User.LastName} - {audiologist.Specialization}");
             }
+            
             if (cmbAudiologists.Items.Count > 0)
                 cmbAudiologists.SelectedIndex = 0;
         }
@@ -425,20 +462,21 @@ namespace HearingClinicManagementSystem.UI.Patient
         private void LoadAvailableTimeSlots()
         {
             cmbTimeSlots.Items.Clear();
+            availableTimeSlots = new List<TimeSlot>();
+            
             if (cmbAudiologists.SelectedIndex == -1) return;
 
-            var selectedAudiologist = StaticDataProvider.Audiologists[cmbAudiologists.SelectedIndex];
+            var repository = HearingClinicRepository.Instance;
+            var selectedAudiologist = audiologists[cmbAudiologists.SelectedIndex];
             var dayOfWeek = dtpDate.Value.DayOfWeek.ToString();
-            var schedule = StaticDataProvider.Schedules
-                .FirstOrDefault(s => s.AudiologistID == selectedAudiologist.AudiologistID && s.DayOfWeek == dayOfWeek);
+            
+            var schedule = repository.GetScheduleByAudiologistAndDay(selectedAudiologist.AudiologistID, dayOfWeek);
 
             if (schedule != null)
             {
-                var availableSlots = StaticDataProvider.TimeSlots
-                    .Where(ts => ts.ScheduleID == schedule.ScheduleID && ts.IsAvailable)
-                    .OrderBy(ts => ts.StartTime);
+                availableTimeSlots = repository.GetAvailableTimeSlotsByScheduleId(schedule.ScheduleID);
 
-                foreach (var slot in availableSlots)
+                foreach (var slot in availableTimeSlots)
                 {
                     cmbTimeSlots.Items.Add($"{slot.StartTime.ToString(@"hh\:mm")} - {slot.EndTime.ToString(@"hh\:mm")}");
                 }
@@ -456,39 +494,17 @@ namespace HearingClinicManagementSystem.UI.Patient
 
         private int GetSelectedTimeSlotId()
         {
-            if (cmbAudiologists.SelectedIndex == -1 || cmbTimeSlots.SelectedIndex == -1) return -1;
+            if (cmbAudiologists.SelectedIndex == -1 || cmbTimeSlots.SelectedIndex == -1 || 
+                availableTimeSlots == null || availableTimeSlots.Count == 0) 
+                return -1;
 
-            var selectedAudiologist = StaticDataProvider.Audiologists[cmbAudiologists.SelectedIndex];
-            var dayOfWeek = dtpDate.Value.DayOfWeek.ToString();
-            var schedule = StaticDataProvider.Schedules
-                .FirstOrDefault(s => s.AudiologistID == selectedAudiologist.AudiologistID && s.DayOfWeek == dayOfWeek);
-
-            if (schedule != null)
+            // If we've loaded valid time slots, get the selected one
+            if (cmbTimeSlots.SelectedIndex < availableTimeSlots.Count)
             {
-                var timeRange = cmbTimeSlots.SelectedItem.ToString().Split('-');
-                if (timeRange.Length >= 1)
-                {
-                    var startTime = TimeSpan.Parse(timeRange[0].Trim());
-                    var slot = StaticDataProvider.TimeSlots
-                        .FirstOrDefault(ts => ts.ScheduleID == schedule.ScheduleID &&
-                                          ts.StartTime == startTime &&
-                                          ts.IsAvailable);
-                    if (slot != null)
-                    {
-                        return slot.TimeSlotID;
-                    }
-                }
+                return availableTimeSlots[cmbTimeSlots.SelectedIndex].TimeSlotID;
             }
+            
             return -1;
-        }
-
-        private void UpdateTimeSlotAvailability(int timeSlotId, bool isAvailable)
-        {
-            var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == timeSlotId);
-            if (timeSlot != null)
-            {
-                timeSlot.IsAvailable = isAvailable;
-            }
         }
 
         private void ResetBookingForm()

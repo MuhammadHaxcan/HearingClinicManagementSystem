@@ -43,10 +43,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private Button btnRefreshOrders;
         private TableLayoutPanel orderLayout;
         private int selectedOrderId = -1;
+
+        private HearingClinicRepository repository;
         #endregion
 
         public PaymentCollectionForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadCompletedAppointments();
             LoadConfirmedOrders();
@@ -1180,40 +1183,12 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
             try
             {
-                // Create a new invoice for the appointment
-                int newInvoiceId = StaticDataProvider.Invoices.Count > 0 ?
-                    StaticDataProvider.Invoices.Max(i => i.InvoiceID) + 1 : 1;
-
-                var newInvoice = new Invoice
-                {
-                    InvoiceID = newInvoiceId,
-                    AppointmentID = selectedAppointmentId,
-                    OrderID = null,
-                    InvoiceDate = DateTime.Now,
-                    TotalAmount = nudPaymentAmount.Value,
-                    Status = "Paid", // Mark as paid immediately since this is a direct payment
-                    PaymentMethod = cmbPaymentMethod.SelectedItem.ToString()
-                };
-
-                // Add the invoice to the data store
-                StaticDataProvider.Invoices.Add(newInvoice);
-
-                // Create a payment record for this invoice
-                int newPaymentId = StaticDataProvider.Payments.Count > 0 ?
-                    StaticDataProvider.Payments.Max(p => p.PaymentID) + 1 : 1;
-
-                var newPayment = new Payment
-                {
-                    PaymentID = newPaymentId,
-                    InvoiceID = newInvoiceId,
-                    Amount = nudPaymentAmount.Value,
-                    PaymentDate = DateTime.Now,
-                    ReceivedBy = AuthService.CurrentUser.UserID,
-                    PaymentMethod = cmbPaymentMethod.SelectedItem.ToString()
-                };
-
-                // Add the payment to the data store
-                StaticDataProvider.Payments.Add(newPayment);
+                // Use repository to create invoice for appointment
+                int newInvoiceId = repository.CreateAppointmentInvoice(
+                    selectedAppointmentId,
+                    nudPaymentAmount.Value,
+                    cmbPaymentMethod.SelectedItem.ToString(),
+                    AuthService.CurrentUser.UserID);
 
                 // Show success message
                 UIService.ShowSuccess($"Payment of {nudPaymentAmount.Value:C} received successfully.\nInvoice #{newInvoiceId} created.");
@@ -1243,56 +1218,12 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
             try
             {
-                // Create a new invoice for the order
-                int newInvoiceId = StaticDataProvider.Invoices.Count > 0 ?
-                    StaticDataProvider.Invoices.Max(i => i.InvoiceID) + 1 : 1;
-
-                var newInvoice = new Invoice
-                {
-                    InvoiceID = newInvoiceId,
-                    AppointmentID = null,
-                    OrderID = selectedOrderId,
-                    InvoiceDate = DateTime.Now,
-                    TotalAmount = nudOrderPaymentAmount.Value,
-                    Status = "Paid", // Mark as paid immediately since this is a direct payment
-                    PaymentMethod = cmbOrderPaymentMethod.SelectedItem.ToString()
-                };
-
-                // Add the invoice to the data store
-                StaticDataProvider.Invoices.Add(newInvoice);
-
-                // Create a payment record for this invoice
-                int newPaymentId = StaticDataProvider.Payments.Count > 0 ?
-                    StaticDataProvider.Payments.Max(p => p.PaymentID) + 1 : 1;
-
-                var newPayment = new Payment
-                {
-                    PaymentID = newPaymentId,
-                    InvoiceID = newInvoiceId,
-                    Amount = nudOrderPaymentAmount.Value,
-                    PaymentDate = DateTime.Now,
-                    ReceivedBy = AuthService.CurrentUser.UserID,
-                    PaymentMethod = cmbOrderPaymentMethod.SelectedItem.ToString()
-                };
-
-                // Add the payment to the data store
-                StaticDataProvider.Payments.Add(newPayment);
-
-                // Update order status if fully paid
-                var order = StaticDataProvider.Orders.FirstOrDefault(o => o.OrderID == selectedOrderId);
-                if (order != null)
-                {
-                    decimal totalPaid = CalculateTotalPaidAmountForOrder(selectedOrderId);
-                    
-                    if (totalPaid >= order.TotalAmount)
-                    {
-                        order.Status = "Completed"; // Mark as completed when fully paid
-                    }
-                    else if (totalPaid > 0)
-                    {
-                        order.Status = "Partially Paid";
-                    }
-                }
+                // Use repository to create invoice for order
+                int newInvoiceId = repository.CreateOrderInvoice(
+                    selectedOrderId,
+                    nudOrderPaymentAmount.Value,
+                    cmbOrderPaymentMethod.SelectedItem.ToString(),
+                    AuthService.CurrentUser.UserID);
 
                 // Show success message
                 UIService.ShowSuccess($"Payment of {nudOrderPaymentAmount.Value:C} processed successfully.\nOrder invoice #{newInvoiceId} created.");
@@ -1342,19 +1273,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         {
             dgvCompletedAppointments.Rows.Clear();
 
-            var completedAppointments = StaticDataProvider.Appointments
-                .Where(a => a.Status == "Completed")
-                .OrderByDescending(a => a.Date)
-                .ToList();
+            // Get completed appointments from repository
+            var completedAppointments = repository.GetCompletedAppointmentsWithPaymentDetails();
 
             foreach (var appointment in completedAppointments)
             {
-                // Get related data
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == appointment.PatientID);
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
-
                 // Calculate total paid amount from invoices
-                decimal totalPaid = CalculateTotalPaidAmount(appointment.AppointmentID);
+                decimal totalPaid = repository.CalculateTotalPaidAmountForAppointment(appointment.AppointmentID);
                 decimal remainingAmount = appointment.Fee - totalPaid;
 
                 // Determine payment status
@@ -1367,13 +1292,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     paymentStatus = "Unpaid";
 
                 // Add row to grid
-                if (patient?.User != null && audiologist?.User != null)
+                if (appointment.Patient?.User != null && appointment.Audiologist?.User != null)
                 {
                     dgvCompletedAppointments.Rows.Add(
                         appointment.AppointmentID,
                         appointment.Date.ToShortDateString(),
-                        $"{patient.User.FirstName} {patient.User.LastName}",
-                        $"Dr. {audiologist.User.FirstName} {audiologist.User.LastName}",
+                        $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}",
+                        $"Dr. {appointment.Audiologist.User.FirstName} {appointment.Audiologist.User.LastName}",
                         appointment.Fee,
                         totalPaid,
                         remainingAmount,
@@ -1387,18 +1312,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         {
             dgvConfirmedOrders.Rows.Clear();
 
-            var confirmedOrders = StaticDataProvider.Orders
-                .Where(o => o.Status == "Confirmed" || o.Status == "Partially Paid" || o.Status == "Completed")
-                .OrderByDescending(o => o.OrderDate)
-                .ToList();
+            // Get confirmed orders from repository
+            var confirmedOrders = repository.GetConfirmedOrdersWithPaymentDetails();
 
             foreach (var order in confirmedOrders)
             {
-                // Get related data
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == order.PatientID);
-                
                 // Calculate total paid amount from invoices
-                decimal totalPaid = CalculateTotalPaidAmountForOrder(order.OrderID);
+                decimal totalPaid = repository.CalculateTotalPaidAmountForOrder(order.OrderID);
                 decimal remainingAmount = order.TotalAmount - totalPaid;
 
                 // Determine payment status
@@ -1407,15 +1327,15 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     paymentStatus = "Paid";
 
                 // Count order items
-                int itemCount = StaticDataProvider.OrderItems.Count(oi => oi.OrderID == order.OrderID);
+                int itemCount = repository.GetOrderItemCount(order.OrderID);
 
                 // Add row to grid
-                if (patient?.User != null)
+                if (order.Patient?.User != null)
                 {
                     dgvConfirmedOrders.Rows.Add(
                         order.OrderID,
                         order.OrderDate.ToShortDateString(),
-                        $"{patient.User.FirstName} {patient.User.LastName}",
+                        $"{order.Patient.User.FirstName} {order.Patient.User.LastName}",
                         order.TotalAmount,
                         totalPaid,
                         remainingAmount,
@@ -1424,6 +1344,140 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     );
                 }
             }
+        }
+
+        private decimal CalculateTotalPaidAmount(int appointmentId)
+        {
+            // Use repository to calculate total paid amount
+            return repository.CalculateTotalPaidAmountForAppointment(appointmentId);
+        }
+
+        private decimal CalculateTotalPaidAmountForOrder(int orderId)
+        {
+            // Use repository to calculate total paid amount
+            return repository.CalculateTotalPaidAmountForOrder(orderId);
+        }
+
+        private void LoadInvoicesForAppointment(int appointmentId)
+        {
+            dgvInvoices.Rows.Clear();
+
+            // Get invoices from repository
+            var appointmentInvoices = repository.GetInvoicesForAppointment(appointmentId);
+
+            bool hasInvoices = appointmentInvoices.Any();
+
+            // Show/hide the "no invoices" message
+            foreach (Control ctrl in pnlInvoiceDetails.Controls)
+            {
+                if (ctrl is Label label && label.Tag?.ToString() == "NoInvoicesMessage")
+                {
+                    label.Visible = !hasInvoices;
+                    break;
+                }
+            }
+
+            if (!hasInvoices) return;
+
+            foreach (var invoice in appointmentInvoices)
+            {
+                // Get user who created the invoice (from payment)
+                string createdBy = "Unknown";
+
+                // Use Payment (singular) instead of Payments (plural)
+                if (invoice.Payment != null && invoice.CreatedByUser != null)
+                {
+                    createdBy = $"{invoice.CreatedByUser.FirstName} {invoice.CreatedByUser.LastName}";
+                }
+
+                dgvInvoices.Rows.Add(
+                    invoice.Invoice.InvoiceID,
+                    invoice.Invoice.InvoiceDate.ToShortDateString(),
+                    invoice.Invoice.TotalAmount,
+                    invoice.Invoice.PaymentMethod ?? "-",
+                    invoice.Invoice.Status,
+                    createdBy
+                );
+            }
+        }
+
+        private void LoadInvoicesForOrder(int orderId)
+        {
+            dgvOrderInvoices.Rows.Clear();
+
+            // Get invoices from repository
+            var orderInvoices = repository.GetInvoicesForOrder(orderId);
+
+            bool hasInvoices = orderInvoices.Any();
+
+            // Show/hide the "no invoices" message
+            foreach (Control ctrl in pnlOrderInvoiceDetails.Controls)
+            {
+                if (ctrl is Label label && label.Tag?.ToString() == "NoOrderInvoicesMessage")
+                {
+                    label.Visible = !hasInvoices;
+                    break;
+                }
+            }
+
+            if (!hasInvoices) return;
+
+            foreach (var invoice in orderInvoices)
+            {
+                // Get user who created the invoice (from payment)
+                string createdBy = "Unknown";
+
+                // Use Payment (singular) instead of Payments (plural)
+                if (invoice.Payment != null && invoice.CreatedByUser != null)
+                {
+                    createdBy = $"{invoice.CreatedByUser.FirstName} {invoice.CreatedByUser.LastName}";
+                }
+
+                dgvOrderInvoices.Rows.Add(
+                    invoice.Invoice.InvoiceID,
+                    invoice.Invoice.InvoiceDate.ToShortDateString(),
+                    invoice.Invoice.TotalAmount,
+                    invoice.Invoice.PaymentMethod ?? "-",
+                    invoice.Invoice.Status,
+                    createdBy
+                );
+            }
+        }
+
+        private void SelectAppointmentById(int appointmentId)
+        {
+            foreach (DataGridViewRow row in dgvCompletedAppointments.Rows)
+            {
+                if ((int)row.Cells["AppointmentID"].Value == appointmentId)
+                {
+                    dgvCompletedAppointments.ClearSelection();
+                    row.Selected = true;
+                    dgvCompletedAppointments.FirstDisplayedScrollingRowIndex = row.Index;
+                    break;
+                }
+            }
+        }
+
+        private void SelectOrderById(int orderId)
+        {
+            foreach (DataGridViewRow row in dgvConfirmedOrders.Rows)
+            {
+                if (Convert.ToInt32(row.Cells["OrderID"].Value) == orderId)
+                {
+                    dgvConfirmedOrders.ClearSelection();
+                    row.Selected = true;
+                    dgvConfirmedOrders.FirstDisplayedScrollingRowIndex = row.Index;
+                    break;
+                }
+            }
+        }
+
+        private decimal ParseCurrencyValue(string value)
+        {
+            // Remove currency symbol and commas, then parse
+            string cleanValue = value.Replace("$", "").Replace(",", "");
+            decimal.TryParse(cleanValue, out decimal result);
+            return result;
         }
 
         private void ClearDetails()
@@ -1476,162 +1530,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     break;
                 }
             }
-        }
-
-        private decimal CalculateTotalPaidAmount(int appointmentId)
-        {
-            // Get all invoices for this appointment
-            var invoices = StaticDataProvider.Invoices
-                .Where(i => i.AppointmentID == appointmentId && i.Status == "Paid")
-                .ToList();
-
-            // Sum up the total amount paid
-            return invoices.Sum(i => i.TotalAmount);
-        }
-
-        private decimal CalculateTotalPaidAmountForOrder(int orderId)
-        {
-            // Get all invoices for this order
-            var invoices = StaticDataProvider.Invoices
-                .Where(i => i.OrderID == orderId && i.Status == "Paid")
-                .ToList();
-
-            // Sum up the total amount paid
-            return invoices.Sum(i => i.TotalAmount);
-        }
-
-        private void LoadInvoicesForAppointment(int appointmentId)
-        {
-            dgvInvoices.Rows.Clear();
-
-            var appointmentInvoices = StaticDataProvider.Invoices
-                .Where(i => i.AppointmentID == appointmentId)
-                .OrderByDescending(i => i.InvoiceDate)
-                .ToList();
-
-            bool hasInvoices = appointmentInvoices.Any();
-
-            // Show/hide the "no invoices" message
-            foreach (Control ctrl in pnlInvoiceDetails.Controls)
-            {
-                if (ctrl is Label label && label.Tag?.ToString() == "NoInvoicesMessage")
-                {
-                    label.Visible = !hasInvoices;
-                    break;
-                }
-            }
-
-            if (!hasInvoices) return;
-
-            foreach (var invoice in appointmentInvoices)
-            {
-                // Get user who created the invoice (from payment)
-                string createdBy = "Unknown";
-
-                var payment = StaticDataProvider.Payments.FirstOrDefault(p => p.InvoiceID == invoice.InvoiceID);
-                if (payment != null)
-                {
-                    var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == payment.ReceivedBy);
-                    if (user != null)
-                    {
-                        createdBy = $"{user.FirstName} {user.LastName}";
-                    }
-                }
-
-                dgvInvoices.Rows.Add(
-                    invoice.InvoiceID,
-                    invoice.InvoiceDate.ToShortDateString(),
-                    invoice.TotalAmount,
-                    invoice.PaymentMethod ?? "-",
-                    invoice.Status,
-                    createdBy
-                );
-            }
-        }
-
-        private void LoadInvoicesForOrder(int orderId)
-        {
-            dgvOrderInvoices.Rows.Clear();
-
-            var orderInvoices = StaticDataProvider.Invoices
-                .Where(i => i.OrderID == orderId)
-                .OrderByDescending(i => i.InvoiceDate)
-                .ToList();
-
-            bool hasInvoices = orderInvoices.Any();
-
-            // Show/hide the "no invoices" message
-            foreach (Control ctrl in pnlOrderInvoiceDetails.Controls)
-            {
-                if (ctrl is Label label && label.Tag?.ToString() == "NoOrderInvoicesMessage")
-                {
-                    label.Visible = !hasInvoices;
-                    break;
-                }
-            }
-
-            if (!hasInvoices) return;
-
-            foreach (var invoice in orderInvoices)
-            {
-                // Get user who created the invoice (from payment)
-                string createdBy = "Unknown";
-
-                var payment = StaticDataProvider.Payments.FirstOrDefault(p => p.InvoiceID == invoice.InvoiceID);
-                if (payment != null)
-                {
-                    var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == payment.ReceivedBy);
-                    if (user != null)
-                    {
-                        createdBy = $"{user.FirstName} {user.LastName}";
-                    }
-                }
-
-                dgvOrderInvoices.Rows.Add(
-                    invoice.InvoiceID,
-                    invoice.InvoiceDate.ToShortDateString(),
-                    invoice.TotalAmount,
-                    invoice.PaymentMethod ?? "-",
-                    invoice.Status,
-                    createdBy
-                );
-            }
-        }
-
-        private void SelectAppointmentById(int appointmentId)
-        {
-            foreach (DataGridViewRow row in dgvCompletedAppointments.Rows)
-            {
-                if ((int)row.Cells["AppointmentID"].Value == appointmentId)
-                {
-                    dgvCompletedAppointments.ClearSelection();
-                    row.Selected = true;
-                    dgvCompletedAppointments.FirstDisplayedScrollingRowIndex = row.Index;
-                    break;
-                }
-            }
-        }
-
-        private void SelectOrderById(int orderId)
-        {
-            foreach (DataGridViewRow row in dgvConfirmedOrders.Rows)
-            {
-                if (Convert.ToInt32(row.Cells["OrderID"].Value) == orderId)
-                {
-                    dgvConfirmedOrders.ClearSelection();
-                    row.Selected = true;
-                    dgvConfirmedOrders.FirstDisplayedScrollingRowIndex = row.Index;
-                    break;
-                }
-            }
-        }
-
-        private decimal ParseCurrencyValue(string value)
-        {
-            // Remove currency symbol and commas, then parse
-            string cleanValue = value.Replace("$", "").Replace(",", "");
-            decimal.TryParse(cleanValue, out decimal result);
-            return result;
         }
         #endregion
     }

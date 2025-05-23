@@ -368,11 +368,22 @@ namespace HearingClinicManagementSystem.UI.Patient
         {
             if (dgvProducts.SelectedRows.Count > 0)
             {
-                int index = dgvProducts.SelectedRows[0].Index;
-                if (index >= 0 && index < StaticDataProvider.Products.Count)
+                try
                 {
-                    var product = StaticDataProvider.Products[index];
+                    // Get the selected product's ID from the grid
+                    int productId = (int)dgvProducts.SelectedRows[0].Cells["ProductID"].Value;
+                    
+                    // Get the product details from the repository
+                    var repository = HearingClinicRepository.Instance;
+                    var product = repository.GetProductById(productId);
+                    
+                    // Display the product details
                     DisplayProductDetails(product);
+                }
+                catch (Exception ex)
+                {
+                    // Log or handle the exception appropriately
+                    UIService.ShowError($"Error loading product details: {ex.Message}");
                 }
             }
         }
@@ -385,8 +396,9 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            int selectedIndex = dgvProducts.SelectedRows[0].Index;
-            var selectedProduct = StaticDataProvider.Products[selectedIndex];
+            int productId = (int)dgvProducts.SelectedRows[0].Cells["ProductID"].Value;
+            var repository = HearingClinicRepository.Instance;
+            var selectedProduct = repository.GetProductById(productId);
 
             // Check if selected quantity is available in inventory
             int requestedQuantity = (int)nudQuantity.Value;
@@ -399,8 +411,8 @@ namespace HearingClinicManagementSystem.UI.Patient
             var cartOrder = GetOrCreateCartOrder();
 
             // Check if item already in cart, update quantity if it is
-            var existingItem = StaticDataProvider.OrderItems.FirstOrDefault(oi =>
-                oi.OrderID == cartOrder.OrderID && oi.ProductID == selectedProduct.ProductID);
+            var cartItems = repository.GetOrderItemsByOrderId(cartOrder.OrderID);
+            var existingItem = cartItems.FirstOrDefault(oi => oi.ProductID == selectedProduct.ProductID);
 
             if (existingItem != null)
             {
@@ -412,20 +424,19 @@ namespace HearingClinicManagementSystem.UI.Patient
                 }
 
                 existingItem.Quantity = newQuantity;
+                repository.UpdateOrderItem(existingItem);
             }
             else
             {
                 // Add item to cart
                 var newItem = new OrderItem
                 {
-                    OrderItemID = StaticDataProvider.OrderItems.Count > 0 ?
-                        StaticDataProvider.OrderItems.Max(oi => oi.OrderItemID) + 1 : 1,
                     OrderID = cartOrder.OrderID,
                     ProductID = selectedProduct.ProductID,
                     Quantity = requestedQuantity,
                     UnitPrice = selectedProduct.Price
                 };
-                StaticDataProvider.OrderItems.Add(newItem);
+                repository.AddOrderItem(newItem);
             }
 
             // Update cart display
@@ -442,22 +453,23 @@ namespace HearingClinicManagementSystem.UI.Patient
             }
 
             int productId = (int)dgvCart.SelectedRows[0].Cells["ProductID"].Value;
-            var cartOrder = StaticDataProvider.Orders.FirstOrDefault(o =>
-                o.PatientID == AuthService.CurrentPatient.PatientID && o.Status == "Cart");
+            var repository = HearingClinicRepository.Instance;
+            var cartOrder = repository.GetOrdersByPatientId(AuthService.CurrentPatient.PatientID)
+                                     .FirstOrDefault(o => o.Status == "Cart");
 
             if (cartOrder != null)
             {
-                var itemToRemove = StaticDataProvider.OrderItems.FirstOrDefault(oi =>
-                    oi.OrderID == cartOrder.OrderID && oi.ProductID == productId);
+                var itemToRemove = repository.GetOrderItemsByOrderId(cartOrder.OrderID)
+                                             .FirstOrDefault(oi => oi.ProductID == productId);
 
                 if (itemToRemove != null)
                 {
-                    StaticDataProvider.OrderItems.Remove(itemToRemove);
+                    repository.RemoveOrderItem(itemToRemove);
 
                     // If cart is empty, remove the cart order too
-                    if (!StaticDataProvider.OrderItems.Any(oi => oi.OrderID == cartOrder.OrderID))
+                    if (!repository.GetOrderItemsByOrderId(cartOrder.OrderID).Any())
                     {
-                        StaticDataProvider.Orders.Remove(cartOrder);
+                        repository.RemoveOrder(cartOrder);
                     }
 
                     LoadCart();
@@ -468,10 +480,11 @@ namespace HearingClinicManagementSystem.UI.Patient
 
         private void BtnCheckout_Click(object sender, EventArgs e)
         {
-            var cartOrder = StaticDataProvider.Orders.FirstOrDefault(o =>
-                o.PatientID == AuthService.CurrentPatient.PatientID && o.Status == "Cart");
+            var repository = HearingClinicRepository.Instance;
+            var cartOrder = repository.GetOrdersByPatientId(AuthService.CurrentPatient.PatientID)
+                                     .FirstOrDefault(o => o.Status == "Cart");
 
-            if (cartOrder == null || !StaticDataProvider.OrderItems.Any(oi => oi.OrderID == cartOrder.OrderID))
+            if (cartOrder == null || !repository.GetOrderItemsByOrderId(cartOrder.OrderID).Any())
             {
                 UIService.ShowError("Your cart is empty");
                 return;
@@ -490,10 +503,8 @@ namespace HearingClinicManagementSystem.UI.Patient
             }
 
             // Calculate total
-            decimal total = StaticDataProvider.OrderItems
-                .Where(oi => oi.OrderID == cartOrder.OrderID)
-                .Sum(oi => oi.Quantity * oi.UnitPrice);
-
+            decimal total = repository.GetOrderItemsByOrderId(cartOrder.OrderID)
+                                       .Sum(oi => oi.Quantity * oi.UnitPrice);
 
             // Update order
             cartOrder.DeliveryAddress = txtDeliveryAddress.Text;
@@ -501,6 +512,7 @@ namespace HearingClinicManagementSystem.UI.Patient
             cartOrder.OrderDate = DateTime.Now;
             cartOrder.TotalAmount = total;
 
+            repository.UpdateOrder(cartOrder);
 
             // Refresh UI
             LoadProducts();
@@ -526,11 +538,13 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            var order = StaticDataProvider.Orders.FirstOrDefault(o => o.OrderID == orderId);
+            var repository = HearingClinicRepository.Instance;
+            var order = repository.GetOrderById(orderId);
             if (order != null)
             {
                 // Update order status
                 order.Status = "Cancelled";
+                repository.UpdateOrder(order);
 
                 // Refresh UI
                 LoadProducts();
@@ -600,11 +614,13 @@ namespace HearingClinicManagementSystem.UI.Patient
             }
         }
 
-
         private void LoadProducts()
         {
             dgvProducts.Rows.Clear();
-            foreach (var product in StaticDataProvider.Products)
+            var repository = HearingClinicRepository.Instance;
+            var products = repository.GetAllProducts();
+            
+            foreach (var product in products)
             {
                 dgvProducts.Rows.Add(
                     product.ProductID,
@@ -620,15 +636,18 @@ namespace HearingClinicManagementSystem.UI.Patient
         {
             dgvCart.Rows.Clear();
             decimal total = 0;
-
-            var cartOrder = StaticDataProvider.Orders.FirstOrDefault(o =>
-                o.PatientID == AuthService.CurrentPatient.PatientID && o.Status == "Cart");
+            
+            var repository = HearingClinicRepository.Instance;
+            var cartOrder = repository.GetOrdersByPatientId(AuthService.CurrentPatient.PatientID)
+                                     .FirstOrDefault(o => o.Status == "Cart");
 
             if (cartOrder != null)
             {
-                foreach (var item in StaticDataProvider.OrderItems.Where(oi => oi.OrderID == cartOrder.OrderID))
+                var orderItems = repository.GetOrderItemsByOrderId(cartOrder.OrderID);
+                
+                foreach (var item in orderItems)
                 {
-                    var product = StaticDataProvider.Products.First(p => p.ProductID == item.ProductID);
+                    var product = repository.GetProductById(item.ProductID);
                     decimal itemTotal = item.Quantity * item.UnitPrice;
                     total += itemTotal;
 
@@ -648,15 +667,18 @@ namespace HearingClinicManagementSystem.UI.Patient
         private void LoadOrders()
         {
             dgvOrders.Rows.Clear();
-            var patientOrders = StaticDataProvider.Orders
-                .Where(o => o.PatientID == AuthService.CurrentPatient.PatientID && o.Status != "Cart")
-                .OrderByDescending(o => o.OrderDate);
+            var repository = HearingClinicRepository.Instance;
+            var patientOrders = repository.GetOrdersByPatientId(AuthService.CurrentPatient.PatientID)
+                                       .Where(o => o.Status != "Cart")
+                                       .OrderByDescending(o => o.OrderDate);
 
             foreach (var order in patientOrders)
             {
-                foreach (var item in StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID))
+                var orderItems = repository.GetOrderItemsByOrderId(order.OrderID);
+                
+                foreach (var item in orderItems)
                 {
-                    var product = StaticDataProvider.Products.First(p => p.ProductID == item.ProductID);
+                    var product = repository.GetProductById(item.ProductID);
                     dgvOrders.Rows.Add(
                         order.OrderID,
                         order.OrderDate.ToString("MM/dd/yyyy"),
@@ -672,22 +694,22 @@ namespace HearingClinicManagementSystem.UI.Patient
 
         private Order GetOrCreateCartOrder()
         {
-            var cartOrder = StaticDataProvider.Orders.FirstOrDefault(o =>
-                o.PatientID == AuthService.CurrentPatient.PatientID && o.Status == "Cart");
+            var repository = HearingClinicRepository.Instance;
+            var cartOrder = repository.GetOrdersByPatientId(AuthService.CurrentPatient.PatientID)
+                                    .FirstOrDefault(o => o.Status == "Cart");
 
             // Create cart if doesn't exist
             if (cartOrder == null)
             {
                 cartOrder = new Order
                 {
-                    OrderID = StaticDataProvider.Orders.Count > 0 ?
-                        StaticDataProvider.Orders.Max(o => o.OrderID) + 1 : 1,
                     PatientID = AuthService.CurrentPatient.PatientID,
                     OrderDate = DateTime.Now,
                     DeliveryAddress = AuthService.CurrentPatient.Address,
                     Status = "Cart"
                 };
-                StaticDataProvider.Orders.Add(cartOrder);
+                
+                repository.AddOrder(cartOrder);
             }
 
             return cartOrder;
@@ -698,9 +720,12 @@ namespace HearingClinicManagementSystem.UI.Patient
             bool allInStock = true;
             outOfStockItems = "";
 
-            foreach (var item in StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID))
+            var repository = HearingClinicRepository.Instance;
+            var orderItems = repository.GetOrderItemsByOrderId(order.OrderID);
+
+            foreach (var item in orderItems)
             {
-                var product = StaticDataProvider.Products.First(p => p.ProductID == item.ProductID);
+                var product = repository.GetProductById(item.ProductID);
                 if (item.Quantity > product.QuantityInStock)
                 {
                     allInStock = false;

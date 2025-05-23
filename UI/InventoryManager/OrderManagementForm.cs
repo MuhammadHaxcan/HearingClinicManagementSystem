@@ -28,10 +28,12 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
         private int? selectedOrderId = null;
         private Order selectedOrder = null;
+        private HearingClinicRepository repository;
         #endregion
 
         public OrderManagementForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadPendingOrders();
         }
@@ -433,7 +435,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 selectedOrderId = (int)selectedRow.Cells["OrderID"].Value;
 
                 // Load order details
-                selectedOrder = StaticDataProvider.Orders.FirstOrDefault(o => o.OrderID == selectedOrderId);
+                selectedOrder = repository.GetOrderWithDetails(selectedOrderId.Value);
                 if (selectedOrder != null)
                 {
                     LoadOrderDetails(selectedOrder);
@@ -569,13 +571,13 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 return;
             }
 
-            // Check if all items are in stock
+            // Check if all items have enough stock
             bool allItemsInStock = true;
-            var orderItems = StaticDataProvider.OrderItems.Where(oi => oi.OrderID == selectedOrder.OrderID).ToList();
+            var orderItems = repository.GetOrderItemsWithProductDetails(selectedOrder.OrderID);
 
             foreach (var item in orderItems)
             {
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == item.ProductID);
+                var product = item.Product;
                 if (product != null && product.QuantityInStock < item.Quantity)
                 {
                     allItemsInStock = false;
@@ -598,36 +600,29 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 {
                     try
                     {
-                        // Update order status
-                        selectedOrder.Status = "Confirmed";
+                        // Use repository to confirm order, which handles all related operations
+                        bool success = repository.ConfirmOrder(
+                            selectedOrderId.Value,
+                            AuthService.CurrentUser.UserID
+                        );
 
-                        // Process inventory changes
-                        foreach (var item in orderItems)
+                        if (success)
                         {
-                            var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == item.ProductID);
-                            if (product != null)
-                            {
-                                // Reduce inventory
-                                product.QuantityInStock -= item.Quantity;
+                            // Success message
+                            UIService.ShowSuccess("Order confirmed successfully. Inventory has been updated.");
 
-                                // Record transaction
-                                RecordInventoryTransaction(product.ProductID, item.Quantity, $"Sale for Order #{selectedOrder.OrderID}", "Sale");
-                            }
+                            // Reload data
+                            LoadPendingOrders();
+
+                            // Clear selection
+                            ClearOrderDetails();
+                            selectedOrderId = null;
+                            selectedOrder = null;
                         }
-
-                        // Update ProcessedBy field
-                        selectedOrder.ProcessedBy = AuthService.CurrentUser.UserID;
-
-                        // Success message
-                        UIService.ShowSuccess("Order confirmed successfully. Inventory has been updated.");
-
-                        // Reload data
-                        LoadPendingOrders();
-
-                        // Clear selection
-                        ClearOrderDetails();
-                        selectedOrderId = null;
-                        selectedOrder = null;
+                        else
+                        {
+                            UIService.ShowError("Failed to confirm order. It may have already been processed.");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -657,22 +652,29 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
             {
                 try
                 {
-                    // Update order status
-                    selectedOrder.Status = "Cancelled";
+                    // Use repository to reject order
+                    bool success = repository.RejectOrder(
+                        selectedOrderId.Value,
+                        AuthService.CurrentUser.UserID
+                    );
 
-                    // Update ProcessedBy field
-                    selectedOrder.ProcessedBy = AuthService.CurrentUser.UserID;
+                    if (success)
+                    {
+                        // Success message
+                        UIService.ShowSuccess("Order has been cancelled.");
 
-                    // Success message
-                    UIService.ShowSuccess("Order has been cancelled.");
+                        // Reload data
+                        LoadPendingOrders();
 
-                    // Reload data
-                    LoadPendingOrders();
-
-                    // Clear selection
-                    ClearOrderDetails();
-                    selectedOrderId = null;
-                    selectedOrder = null;
+                        // Clear selection
+                        ClearOrderDetails();
+                        selectedOrderId = null;
+                        selectedOrder = null;
+                    }
+                    else
+                    {
+                        UIService.ShowError("Failed to cancel order. It may have already been processed.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -687,61 +689,62 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
         {
             dgvPendingOrders.Rows.Clear();
 
-            // Get orders that need processing (focus on pending, but show all for tracking)
-            var orders = StaticDataProvider.Orders
-                .OrderByDescending(o => o.Status == "Pending") // Put pending orders first
-                .ThenByDescending(o => o.OrderDate)
-                .ToList();
-
-            foreach (var order in orders)
+            try
             {
-                // Find customer name
-                string customerName = "Unknown";
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == order.PatientID);
-                if (patient != null && patient.User != null)
+                // Get orders using repository
+                var orders = repository.GetAllOrdersWithDetails();
+
+                foreach (var order in orders)
                 {
-                    customerName = $"{patient.User.FirstName} {patient.User.LastName}";
-                }
-
-                // Count items
-                int itemCount = StaticDataProvider.OrderItems
-                    .Count(oi => oi.OrderID == order.OrderID);
-
-                // Calculate total amount
-                decimal totalAmount = order.TotalAmount;
-
-                dgvPendingOrders.Rows.Add(
-                    order.OrderID,
-                    order.OrderDate.ToShortDateString(),
-                    customerName,
-                    totalAmount,
-                    order.Status,
-                    itemCount
-                );
-
-                // Highlight pending orders
-                if (order.Status == "Pending")
-                {
-                    dgvPendingOrders.Rows[dgvPendingOrders.Rows.Count - 1].DefaultCellStyle.BackColor = Color.FromArgb(255, 252, 230);
-                }
-            }
-
-            // Reset selection
-            if (selectedOrderId.HasValue)
-            {
-                foreach (DataGridViewRow row in dgvPendingOrders.Rows)
-                {
-                    if ((int)row.Cells["OrderID"].Value == selectedOrderId.Value)
+                    // Get customer name
+                    string customerName = "Unknown";
+                    if (order.Patient?.User != null)
                     {
-                        row.Selected = true;
-                        dgvPendingOrders.FirstDisplayedScrollingRowIndex = row.Index;
-                        break;
+                        customerName = $"{order.Patient.User.FirstName} {order.Patient.User.LastName}";
+                    }
+
+                    // Count order items
+                    int itemCount = repository.GetOrderItemsWithProductDetails(order.OrderID).Count;
+
+                    // Add row to grid
+                    dgvPendingOrders.Rows.Add(
+                        order.OrderID,
+                        order.OrderDate.ToShortDateString(),
+                        customerName,
+                        order.TotalAmount,
+                        order.Status,
+                        itemCount
+                    );
+
+                    // Highlight pending orders
+                    if (order.Status == "Pending")
+                    {
+                        dgvPendingOrders.Rows[dgvPendingOrders.Rows.Count - 1].DefaultCellStyle.BackColor = 
+                            Color.FromArgb(255, 252, 230);
                     }
                 }
+
+                // Reset selection
+                if (selectedOrderId.HasValue)
+                {
+                    foreach (DataGridViewRow row in dgvPendingOrders.Rows)
+                    {
+                        if ((int)row.Cells["OrderID"].Value == selectedOrderId.Value)
+                        {
+                            row.Selected = true;
+                            dgvPendingOrders.FirstDisplayedScrollingRowIndex = row.Index;
+                            break;
+                        }
+                    }
+                }
+                else if (dgvPendingOrders.Rows.Count > 0)
+                {
+                    dgvPendingOrders.Rows[0].Selected = true;
+                }
             }
-            else if (dgvPendingOrders.Rows.Count > 0)
+            catch (Exception ex)
             {
-                dgvPendingOrders.Rows[0].Selected = true;
+                UIService.ShowError($"Error loading orders: {ex.Message}");
             }
         }
 
@@ -753,31 +756,32 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                 return;
             }
 
-            // Find customer name
-            string customerName = "Unknown";
-            var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == order.PatientID);
-            if (patient != null && patient.User != null)
+            try
             {
-                customerName = $"{patient.User.FirstName} {patient.User.LastName}";
+                // Get customer name
+                string customerName = "Unknown";
+                if (order.Patient?.User != null)
+                {
+                    customerName = $"{order.Patient.User.FirstName} {order.Patient.User.LastName}";
+                }
+
+                // Update display fields
+                lblOrderStatus.Text = $"Status: {order.Status}";
+                lblOrderStatus.ForeColor = GetStatusColor(order.Status);
+                lblOrderDate.Text = $"Order Date: {order.OrderDate.ToShortDateString()}";
+                lblCustomerInfo.Text = $"Customer: {customerName}";
+
+                if (order.DeliveryAddress != null)
+                {
+                    lblCustomerInfo.Text += $" | Address: {order.DeliveryAddress}";
+                }
+
+                lblTotalAmount.Text = $"Total: ${order.TotalAmount:N2}";
             }
-
-            // Calculate total amount - use directly from order model
-            decimal totalAmount = order.TotalAmount;
-
-            // Update the display fields
-            lblOrderStatus.Text = $"Status: {order.Status}";
-            lblOrderStatus.ForeColor = GetStatusColor(order.Status);
-
-            lblOrderDate.Text = $"Order Date: {order.OrderDate.ToShortDateString()}";
-            lblCustomerInfo.Text = $"Customer: {customerName}";
-
-            if (order.DeliveryAddress != null)
+            catch (Exception ex)
             {
-                lblCustomerInfo.Text += $" | Address: {order.DeliveryAddress}";
+                UIService.ShowError($"Error loading order details: {ex.Message}");
             }
-
-            lblTotalAmount.Text = $"Total: ${totalAmount:N2}";
-
         }
 
         private void LoadOrderItems(Order order)
@@ -786,31 +790,37 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
 
             if (order == null) return;
 
-            var orderItems = StaticDataProvider.OrderItems
-                .Where(oi => oi.OrderID == order.OrderID)
-                .ToList();
-
-            foreach (var item in orderItems)
+            try
             {
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == item.ProductID);
-                string productName = product != null ? $"{product.Manufacturer} {product.Model}" : "Unknown Product";
-                int inStock = product != null ? product.QuantityInStock : 0;
-                decimal subtotal = item.Quantity * item.UnitPrice;
+                var orderItems = repository.GetOrderItemsWithProductDetails(order.OrderID);
 
-                dgvOrderDetails.Rows.Add(
-                    item.ProductID,
-                    productName,
-                    item.Quantity,
-                    item.UnitPrice,
-                    subtotal,
-                    inStock
-                );
-
-                // Highlight if stock is not enough
-                if (product != null && product.QuantityInStock < item.Quantity)
+                foreach (var item in orderItems)
                 {
-                    dgvOrderDetails.Rows[dgvOrderDetails.Rows.Count - 1].DefaultCellStyle.BackColor = Color.FromArgb(255, 232, 232);
+                    var product = item.Product;
+                    string productName = product != null ? $"{product.Manufacturer} {product.Model}" : "Unknown Product";
+                    int inStock = product != null ? product.QuantityInStock : 0;
+                    decimal subtotal = item.Quantity * item.UnitPrice;
+
+                    dgvOrderDetails.Rows.Add(
+                        item.ProductID,
+                        productName,
+                        item.Quantity,
+                        item.UnitPrice,
+                        subtotal,
+                        inStock
+                    );
+
+                    // Highlight if stock is not enough
+                    if (product != null && product.QuantityInStock < item.Quantity)
+                    {
+                        dgvOrderDetails.Rows[dgvOrderDetails.Rows.Count - 1].DefaultCellStyle.BackColor = 
+                            Color.FromArgb(255, 232, 232);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error loading order items: {ex.Message}");
             }
         }
 
@@ -843,34 +853,6 @@ namespace HearingClinicManagementSystem.UI.InventoryManager
                     return Color.Red;
                 default:
                     return Color.Black;
-            }
-        }
-
-        private void RecordInventoryTransaction(int productId, int quantity, string reason, string transactionType)
-        {
-            try
-            {
-                // Create new inventory transaction
-                int newTransactionId = StaticDataProvider.InventoryTransactions.Count > 0 ?
-                    StaticDataProvider.InventoryTransactions.Max(t => t.TransactionID) + 1 : 1;
-
-                // Create the transaction using the right model
-                var transaction = new InventoryTransaction
-                {
-                    TransactionID = newTransactionId,
-                    ProductID = productId,
-                    TransactionType = transactionType, // "Sale", "Restock", "Adjustment"
-                    Quantity = quantity,
-                    TransactionDate = DateTime.Now,
-                    ProcessedBy = AuthService.CurrentUser.UserID
-                };
-
-                // Add to data store
-                StaticDataProvider.InventoryTransactions.Add(transaction);
-            }
-            catch (Exception ex)
-            {
-                UIService.ShowError($"Error recording inventory transaction: {ex.Message}");
             }
         }
         #endregion

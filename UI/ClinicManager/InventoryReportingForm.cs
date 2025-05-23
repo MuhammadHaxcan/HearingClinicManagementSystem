@@ -43,10 +43,14 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
         // Date range for filtering
         private DateTime startDate;
         private DateTime endDate;
+        
+        // Repository
+        private HearingClinicRepository repository;
         #endregion
 
         public InventoryReportingForm()
         {
+            repository = HearingClinicRepository.Instance;
             startDate = DateTime.Now.AddMonths(-3); // Default to last 3 months
             endDate = DateTime.Now;
             
@@ -503,57 +507,25 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
 
         private void LoadSummaryStats()
         {
-            // Get all confirmed orders
-            var confirmedOrders = StaticDataProvider.Orders.Where(o => o.Status == "Confirmed").ToList();
+            // Get inventory summary statistics from repository
+            var stats = repository.GetInventorySummaryStats();
             
-            // Total Orders
-            int totalOrders = confirmedOrders.Count;
-            lblTotalOrders.Text = totalOrders.ToString();
+            // Update UI with the statistics
+            lblTotalOrders.Text = stats.TotalOrders.ToString();
+            lblTotalSales.Text = stats.TotalSales.ToString("C2");
+            lblAverageOrderValue.Text = stats.AverageOrderValue.ToString("C2");
             
-            // Total Sales Amount
-            decimal totalSales = confirmedOrders.Sum(o => o.TotalAmount);
-            lblTotalSales.Text = totalSales.ToString("C2");
-            
-            // Average Order Value
-            decimal avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-            lblAverageOrderValue.Text = avgOrderValue.ToString("C2");
-            
-            // Most Popular Product
-            var productSales = new Dictionary<int, int>();
-            foreach (var order in confirmedOrders)
+            if (stats.MostPopularProductCount > 0)
             {
-                var orderItems = StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID);
-                foreach (var item in orderItems)
-                {
-                    if (productSales.ContainsKey(item.ProductID))
-                        productSales[item.ProductID] += item.Quantity;
-                    else
-                        productSales[item.ProductID] = item.Quantity;
-                }
-            }
-            
-            if (productSales.Any())
-            {
-                var topProduct = productSales.OrderByDescending(kv => kv.Value).First();
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == topProduct.Key);
-                string productName = product != null ? 
-                    $"{product.Manufacturer} {product.Model}" : 
-                    $"Product #{topProduct.Key}";
-                    
-                lblMostPopularProduct.Text = $"{productName} ({topProduct.Value} units)";
+                lblMostPopularProduct.Text = $"{stats.MostPopularProduct} ({stats.MostPopularProductCount} units)";
             }
             else
             {
                 lblMostPopularProduct.Text = "No data available";
             }
             
-            // Low Stock Count
-            int lowStockCount = StaticDataProvider.Products.Count(p => p.QuantityInStock <= 10);
-            lblLowStockCount.Text = $"{lowStockCount} items";
-            
-            // Total Products
-            int totalProducts = StaticDataProvider.Products.Count;
-            lblTotalProducts.Text = totalProducts.ToString();
+            lblLowStockCount.Text = $"{stats.LowStockCount} items";
+            lblTotalProducts.Text = stats.TotalProducts.ToString();
         }
 
         private void LoadTopSellingProductsGrid()
@@ -577,56 +549,22 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvTopSellingProducts.Columns["TotalSales"].Width = 100;
             dgvTopSellingProducts.Columns["PercentOfSales"].Width = 80;
             
-            // Get confirmed orders
-            var confirmedOrders = StaticDataProvider.Orders.Where(o => o.Status == "Confirmed").ToList();
+            // Get top selling products from repository
+            var topProducts = repository.GetTopSellingProducts(15);
             
-            // Calculate total units sold and sales by product
-            var productStats = new Dictionary<int, (int Units, decimal Sales)>();
-            foreach (var order in confirmedOrders)
-            {
-                var orderItems = StaticDataProvider.OrderItems.Where(oi => oi.OrderID == order.OrderID);
-                foreach (var item in orderItems)
-                {
-                    decimal itemTotal = item.Quantity * item.UnitPrice;
-                    if (productStats.ContainsKey(item.ProductID))
-                        productStats[item.ProductID] = (
-                            productStats[item.ProductID].Units + item.Quantity,
-                            productStats[item.ProductID].Sales + itemTotal
-                        );
-                    else
-                        productStats[item.ProductID] = (item.Quantity, itemTotal);
-                }
-            }
-            
-            // Calculate total sales for percentage calculation
-            decimal totalSales = productStats.Sum(p => p.Value.Sales);
-            
-            // Sort products by sales and take top 10
-            var topProducts = productStats
-                .OrderByDescending(p => p.Value.Sales)
-                .Take(15) // Show more products
-                .ToList();
-                
             // Add data rows
             for (int i = 0; i < topProducts.Count; i++)
             {
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == topProducts[i].Key);
-                if (product == null) continue;
-                
-                string productName = product.Model;
-                string manufacturer = product.Manufacturer;
-                
-                decimal percentOfSales = totalSales > 0 ? 
-                    (topProducts[i].Value.Sales / totalSales) * 100 : 0;
+                var product = topProducts[i];
                 
                 dgvTopSellingProducts.Rows.Add(
-                    (i + 1).ToString(),
-                    topProducts[i].Key.ToString(),
-                    productName,
-                    manufacturer,
-                    topProducts[i].Value.Units.ToString("N0"),
-                    topProducts[i].Value.Sales.ToString("C2"),
-                    percentOfSales.ToString("F1") + "%"
+                    product.Rank.ToString(),
+                    product.ProductID.ToString(),
+                    product.ProductName,
+                    product.Manufacturer,
+                    product.UnitsSold.ToString("N0"),
+                    product.TotalSales.ToString("C2"),
+                    product.PercentOfSales.ToString("F1") + "%"
                 );
                 
                 // Highlight top 3
@@ -641,64 +579,81 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
 
         private void LoadLowStockProductsGrid()
         {
-            // Configure grid columns
-            dgvLowStockProducts.Columns.Clear();
-            dgvLowStockProducts.Columns.Add("ProductID", "ID");
-            dgvLowStockProducts.Columns.Add("ProductName", "Product");
-            dgvLowStockProducts.Columns.Add("Manufacturer", "Manufacturer");
-            dgvLowStockProducts.Columns.Add("CurrentStock", "Current Stock");
-            dgvLowStockProducts.Columns.Add("Status", "Status");
-            dgvLowStockProducts.Columns.Add("Price", "Price");
-            dgvLowStockProducts.Columns.Add("LastRestocked", "Last Restocked");
-            
-            // Get low stock products (less than or equal to 10 items)
-            var lowStockProducts = StaticDataProvider.Products
-                .Where(p => p.QuantityInStock <= 10)
-                .OrderBy(p => p.QuantityInStock)
-                .ToList();
-            
-            // Get last restock transaction for each product
-            var lastRestocks = new Dictionary<int, DateTime?>();
-            foreach (var product in lowStockProducts)
+            try
             {
-                var lastRestock = StaticDataProvider.InventoryTransactions
-                    .Where(t => t.ProductID == product.ProductID && t.TransactionType == "Restock")
-                    .OrderByDescending(t => t.TransactionDate)
-                    .FirstOrDefault();
+                // Configure grid columns
+                dgvLowStockProducts.Columns.Clear();
+                dgvLowStockProducts.Columns.Add("ProductID", "ID");
+                dgvLowStockProducts.Columns.Add("ProductName", "Product");
+                dgvLowStockProducts.Columns.Add("Manufacturer", "Manufacturer");
+                dgvLowStockProducts.Columns.Add("CurrentStock", "Current Stock");
+                dgvLowStockProducts.Columns.Add("Status", "Status");
+                dgvLowStockProducts.Columns.Add("Price", "Price");
+                dgvLowStockProducts.Columns.Add("LastRestocked", "Last Restocked");
                 
-                lastRestocks[product.ProductID] = lastRestock?.TransactionDate;
-            }
-            
-            // Add data rows
-            foreach (var product in lowStockProducts)
-            {
-                string status = GetStockStatusText(product.QuantityInStock);
-                string lastRestocked = lastRestocks[product.ProductID].HasValue ? 
-                    lastRestocks[product.ProductID].Value.ToShortDateString() : "Never";
+                // Get low stock products from repository
+                var lowStockProducts = repository.GetLowStockProducts(10);
+                
+                if (lowStockProducts == null || lowStockProducts.Count == 0)
+                {
+                    // Add a message row if there are no low stock products
+                    dgvLowStockProducts.Rows.Add("-", "No low stock products found", "-", "-", "-", "-", "-");
+                    return;
+                }
+                
+                // Add data rows
+                foreach (var product in lowStockProducts)
+                {
+                    // Safely handle the LastRestocked property which might be null
+                    string lastRestocked;
+                    try
+                    {
+                        lastRestocked = product.LastRestocked.HasValue ? 
+                            product.LastRestocked.Value.ToShortDateString() : "Never";
+                    }
+                    catch
+                    {
+                        // If there's any issue accessing LastRestocked, default to "Never"
+                        lastRestocked = "Never";
+                    }
                     
-                var row = dgvLowStockProducts.Rows.Add(
-                    product.ProductID.ToString(),
-                    product.Model,
-                    product.Manufacturer,
-                    product.QuantityInStock.ToString(),
-                    status,
-                    product.Price.ToString("C2"),
-                    lastRestocked
-                );
-                
-                // Color code based on stock level
-                if (product.QuantityInStock <= 0)
-                {
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(220, 53, 69);
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.Font = new Font(dgvLowStockProducts.Font, FontStyle.Bold);
+                    // Create the row after checking the LastRestocked property
+                    var row = dgvLowStockProducts.Rows.Add(
+                        product.ProductID.ToString(),
+                        product.ProductName?.ToString() ?? "Unknown",
+                        product.Manufacturer?.ToString() ?? "Unknown",
+                        product.CurrentStock.ToString(),
+                        product.Status?.ToString() ?? "Unknown",
+                        product.Price.ToString("C2"),
+                        lastRestocked
+                    );
+                    
+                    // Color code based on stock level - check if CurrentStock property exists
+                    try
+                    {
+                        int stockLevel = product.CurrentStock;
+                        if (stockLevel <= 0)
+                        {
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(220, 53, 69);
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.Font = new Font(dgvLowStockProducts.Font, FontStyle.Bold);
+                        }
+                        else if (stockLevel <= 5)
+                        {
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(255, 193, 7);
+                            dgvLowStockProducts.Rows[row].Cells["Status"].Style.Font = new Font(dgvLowStockProducts.Font, FontStyle.Bold);
+                        }
+                    }
+                    catch
+                    {
+                        // If there's an issue accessing CurrentStock, don't apply any styling
+                    }
                 }
-                else if (product.QuantityInStock <= 5)
-                {
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.ForeColor = Color.White;
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.BackColor = Color.FromArgb(255, 193, 7);
-                    dgvLowStockProducts.Rows[row].Cells["Status"].Style.Font = new Font(dgvLowStockProducts.Font, FontStyle.Bold);
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading low stock products: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -713,78 +668,45 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvTransactionSummary.Columns.Add("ProductsAffected", "Products Affected");
             dgvTransactionSummary.Columns.Add("AvgQuantityPerTransaction", "Avg Qty/Transaction");
             
-            // Get transactions within date range
-            string selectedType = cmbTransactionType.SelectedItem.ToString();
-            var transactions = StaticDataProvider.InventoryTransactions
-                .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate)
-                .Where(t => selectedType == "All" || t.TransactionType == selectedType)
-                .ToList();
-            
-            // Group by transaction type
-            var transactionStats = transactions
-                .GroupBy(t => t.TransactionType)
-                .Select(g => new
-                {
-                    Type = g.Key,
-                    Count = g.Count(),
-                    TotalQuantity = g.Sum(t => t.Quantity),
-                    ProductsAffected = g.Select(t => t.ProductID).Distinct().Count(),
-                    AvgQuantityPerTransaction = g.Average(t => t.Quantity)
-                })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-            
-            // Calculate total for percentage
-            int totalTransactions = transactions.Count;
-            
-            // Add data rows for each type
-            foreach (var stat in transactionStats)
-            {
-                double percentOfTotal = totalTransactions > 0 ?
-                    (double)stat.Count / totalTransactions * 100 : 0;
+            try {
+                // Get selected transaction type
+                string selectedType = cmbTransactionType.SelectedItem.ToString();
                 
-                var row = dgvTransactionSummary.Rows.Add(
-                    stat.Type,
-                    stat.Count.ToString("N0"),
-                    stat.TotalQuantity.ToString("N0"),
-                    percentOfTotal.ToString("F1") + "%",
-                    stat.ProductsAffected.ToString("N0"),
-                    stat.AvgQuantityPerTransaction.ToString("F1")
-                );
+                // Get transaction summary from repository
+                var transactionStats = repository.GetTransactionSummary(startDate, endDate, selectedType);
                 
-                // Color code based on transaction type
-                if (stat.Type == "Sale")
+                // Add data rows
+                foreach (var stat in transactionStats)
                 {
-                    dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
-                    dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
+                    var row = dgvTransactionSummary.Rows.Add(
+                        stat.TransactionType,
+                        stat.Count.ToString("N0"),
+                        stat.TotalQuantity.ToString("N0"),
+                        stat.PercentOfTotal.ToString("F1") + "%",
+                        stat.ProductsAffected.ToString("N0"),
+                        stat.AvgQuantityPerTransaction.ToString("F1")
+                    );
+                    
+                    // Highlight the total row
+                    if (stat.TransactionType == "TOTAL")
+                    {
+                        dgvTransactionSummary.Rows[row].DefaultCellStyle.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
+                        dgvTransactionSummary.Rows[row].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+                    }
+                    // Color code based on transaction type
+                    else if (stat.TransactionType == "Sale")
+                    {
+                        dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
+                        dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
+                    }
+                    else if (stat.TransactionType == "Restock")
+                    {
+                        dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
+                        dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
+                    }
                 }
-                else if (stat.Type == "Restock")
-                {
-                    dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
-                    dgvTransactionSummary.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
-                }
-            }
-            
-            // Add total row
-            if (transactionStats.Count > 0)
-            {
-                int totalCount = transactionStats.Sum(s => s.Count);
-                int totalQuantity = transactionStats.Sum(s => s.TotalQuantity);
-                int distinctProducts = transactions.Select(t => t.ProductID).Distinct().Count();
-                double avgQuantity = transactions.Count > 0 ? transactions.Average(t => t.Quantity) : 0;
-                
-                var totalRow = dgvTransactionSummary.Rows.Add(
-                    "TOTAL",
-                    totalCount.ToString("N0"),
-                    totalQuantity.ToString("N0"),
-                    "100.0%",
-                    distinctProducts.ToString("N0"),
-                    avgQuantity.ToString("F1")
-                );
-                
-                // Style total row
-                dgvTransactionSummary.Rows[totalRow].DefaultCellStyle.Font = new Font(dgvTransactionSummary.Font, FontStyle.Bold);
-                dgvTransactionSummary.Rows[totalRow].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            } catch (Exception ex) {
+                MessageBox.Show($"Error loading transaction summary: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -800,51 +722,40 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvTransactions.Columns.Add("Quantity", "Quantity");
             dgvTransactions.Columns.Add("ProcessedBy", "Processed By");
             
-            // Get transactions within date range
-            string selectedType = cmbTransactionType.SelectedItem.ToString();
-            var filteredTransactions = StaticDataProvider.InventoryTransactions
-                .Where(t => t.TransactionDate >= startDate && t.TransactionDate <= endDate)
-                .Where(t => selectedType == "All" || t.TransactionType == selectedType)
-                .OrderByDescending(t => t.TransactionDate)
-                .Take(100) // Limit to 100 most recent transactions
-                .ToList();
-            
-            // Add data rows
-            foreach (var transaction in filteredTransactions)
-            {
-                // Get product info
-                var product = StaticDataProvider.Products.FirstOrDefault(p => p.ProductID == transaction.ProductID);
-                string productName = product != null ? 
-                    $"{product.Manufacturer} {product.Model}" : 
-                    $"Product #{transaction.ProductID}";
+            try {
+                // Get selected transaction type
+                string selectedType = cmbTransactionType.SelectedItem.ToString();
                 
-                // Get user who processed the transaction
-                var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == transaction.ProcessedBy);
-                string processedBy = user != null ? 
-                    $"{user.FirstName} {user.LastName}" : 
-                    $"User #{transaction.ProcessedBy}";
+                // Get transactions from repository
+                var transactions = repository.GetTransactionHistory(startDate, endDate, selectedType, 100);
                 
-                var row = dgvTransactions.Rows.Add(
-                    transaction.TransactionID.ToString(),
-                    transaction.TransactionDate.ToString("g"),
-                    transaction.TransactionType,
-                    transaction.ProductID.ToString(),
-                    productName,
-                    transaction.Quantity.ToString("N0"),
-                    processedBy
-                );
-                
-                // Color-code by transaction type
-                if (transaction.TransactionType == "Sale")
+                // Add data rows
+                foreach (var transaction in transactions)
                 {
-                    dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
-                    dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
+                    var row = dgvTransactions.Rows.Add(
+                        transaction.TransactionID.ToString(),
+                        transaction.TransactionDate.ToString("g"),
+                        transaction.TransactionType,
+                        transaction.ProductID.ToString(),
+                        transaction.ProductName,
+                        transaction.Quantity.ToString("N0"),
+                        transaction.ProcessedBy
+                    );
+                    
+                    // Color-code by transaction type
+                    if (transaction.TransactionType == "Sale")
+                    {
+                        dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(220, 53, 69);
+                        dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
+                    }
+                    else if (transaction.TransactionType == "Restock")
+                    {
+                        dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
+                        dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
+                    }
                 }
-                else if (transaction.TransactionType == "Restock")
-                {
-                    dgvTransactions.Rows[row].Cells["TransactionType"].Style.ForeColor = Color.FromArgb(40, 167, 69);
-                    dgvTransactions.Rows[row].Cells["TransactionType"].Style.Font = new Font(dgvTransactions.Font, FontStyle.Bold);
-                }
+            } catch (Exception ex) {
+                MessageBox.Show($"Error loading transaction history: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         #endregion
@@ -870,20 +781,6 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             
             // Reload transaction data
             LoadTransactionAnalysisData();
-        }
-        #endregion
-
-        #region Helper Methods
-        private string GetStockStatusText(int quantity)
-        {
-            if (quantity <= 0)
-                return "Out of Stock";
-            else if (quantity <= 5)
-                return "Critical Low";
-            else if (quantity <= 10)
-                return "Low Stock";
-            else
-                return "In Stock";
         }
         #endregion
     }

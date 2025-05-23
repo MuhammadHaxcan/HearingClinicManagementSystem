@@ -23,10 +23,12 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private Button btnBook;
         private Button btnCancel;
         private Label lblAvailableSlots;
+        private HearingClinicRepository repository;
         #endregion
 
         public CreateAppointmentForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadPatients();
             LoadAudiologists();
@@ -305,8 +307,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 // Create the new appointment (with "Confirmed" status for walk-in patients)
                 var newAppointment = new Appointment
                 {
-                    AppointmentID = StaticDataProvider.Appointments.Count > 0 ?
-                        StaticDataProvider.Appointments.Max(a => a.AppointmentID) + 1 : 1,
                     PatientID = patientId,
                     AudiologistID = audiologistId,
                     Date = appointmentDate,
@@ -317,15 +317,8 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     CreatedBy = AuthService.CurrentUser.UserID // Set receptionist as creator
                 };
 
-                // Add the appointment to the data store
-                StaticDataProvider.Appointments.Add(newAppointment);
-
-                // Update time slot availability
-                var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == timeSlotId);
-                if (timeSlot != null)
-                {
-                    timeSlot.IsAvailable = false;
-                }
+                // Use repository to create appointment
+                repository.CreateAppointment(newAppointment);
 
                 ResetForm();
                 UIService.ShowSuccess("Appointment booked successfully");
@@ -345,16 +338,8 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         #region Helper Methods
         private void LoadPatients()
         {
-            // Create a list of patient objects with display and value fields
-            var patients = StaticDataProvider.Patients
-                .Where(p => p.User != null && p.User.IsActive)
-                .Select(p => new
-                {
-                    p.PatientID,
-                    DisplayName = $"{p.User.FirstName} {p.User.LastName}" // Removed ID from display
-                })
-                .OrderBy(p => p.DisplayName)
-                .ToList();
+            // Use repository to get active patients
+            var patients = repository.GetActivePatients();
 
             // Bind to combobox
             cmbPatients.DataSource = patients;
@@ -364,16 +349,8 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
         private void LoadAudiologists()
         {
-            // Create a list of audiologist objects with display and value fields
-            var audiologists = StaticDataProvider.Audiologists
-                .Where(a => a.User != null && a.User.IsActive)
-                .Select(a => new
-                {
-                    a.AudiologistID,
-                    DisplayName = $"Dr. {a.User.FirstName} {a.User.LastName}" + (string.IsNullOrEmpty(a.Specialization) ? "" : $" ({a.Specialization})")
-                })
-                .OrderBy(a => a.DisplayName)
-                .ToList();
+            // Use repository to get active audiologists
+            var audiologists = repository.GetActiveAudiologists();
 
             // Bind to combobox
             cmbAudiologists.DataSource = audiologists;
@@ -381,7 +358,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             cmbAudiologists.ValueMember = "AudiologistID";
         }
 
-        // Fix for the LoadAvailableTimeSlots method in CreateAppointmentForm.cs
         private void LoadAvailableTimeSlots()
         {
             cmbTimeSlots.DataSource = null;
@@ -396,59 +372,9 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
             int audiologistId = (int)cmbAudiologists.SelectedValue;
             DateTime selectedDate = dtpDate.Value.Date;
-            var dayOfWeek = selectedDate.DayOfWeek.ToString();
 
-            // Get schedule for selected audiologist on selected day
-            var schedule = StaticDataProvider.Schedules
-                .FirstOrDefault(s => s.AudiologistID == audiologistId && s.DayOfWeek == dayOfWeek);
-
-            if (schedule == null)
-            {
-                lblAvailableSlots.Text = $"No schedule for {dayOfWeek}";
-                lblAvailableSlots.ForeColor = Color.FromArgb(198, 40, 40); // Dark red
-                return;
-            }
-
-            // Get all time slots for that schedule
-            var allSlots = StaticDataProvider.TimeSlots
-                .Where(ts => ts.ScheduleID == schedule.ScheduleID)
-                .OrderBy(ts => ts.StartTime)
-                .ToList();
-
-            // Find which slots are already booked
-            var bookedTimeSlots = StaticDataProvider.Appointments
-                .Where(a => a.AudiologistID == audiologistId &&
-                       a.Date.Date == selectedDate.Date &&
-                       (a.Status == "Confirmed" || a.Status == "Pending"))
-                .Select(a => a.TimeSlotID)
-                .ToList();
-
-            // Filter to only available slots - WITH FIXED STRING FORMAT
-            var availableSlots = new List<object>();
-
-            foreach (var ts in allSlots.Where(ts => !bookedTimeSlots.Contains(ts.TimeSlotID) && ts.IsAvailable))
-            {
-                // Format the times without using string interpolation with format specifiers
-                string startTime = ts.StartTime.Hours + ":" + (ts.StartTime.Minutes == 0 ? "00" : ts.StartTime.Minutes.ToString()) +
-                    (ts.StartTime.Hours < 12 ? " AM" : " PM");
-                string endTime = ts.EndTime.Hours + ":" + (ts.EndTime.Minutes == 0 ? "00" : ts.EndTime.Minutes.ToString()) +
-                    (ts.EndTime.Hours < 12 ? " AM" : " PM");
-
-                // For 12-hour format display
-                if (ts.StartTime.Hours > 12) startTime = (ts.StartTime.Hours - 12) + ":" + (ts.StartTime.Minutes == 0 ? "00" : ts.StartTime.Minutes.ToString()) + " PM";
-                if (ts.StartTime.Hours == 12) startTime = "12:" + (ts.StartTime.Minutes == 0 ? "00" : ts.StartTime.Minutes.ToString()) + " PM";
-                if (ts.StartTime.Hours == 0) startTime = "12:" + (ts.StartTime.Minutes == 0 ? "00" : ts.StartTime.Minutes.ToString()) + " AM";
-
-                if (ts.EndTime.Hours > 12) endTime = (ts.EndTime.Hours - 12) + ":" + (ts.EndTime.Minutes == 0 ? "00" : ts.EndTime.Minutes.ToString()) + " PM";
-                if (ts.EndTime.Hours == 12) endTime = "12:" + (ts.EndTime.Minutes == 0 ? "00" : ts.EndTime.Minutes.ToString()) + " PM";
-                if (ts.EndTime.Hours == 0) endTime = "12:" + (ts.EndTime.Minutes == 0 ? "00" : ts.EndTime.Minutes.ToString()) + " AM";
-
-                availableSlots.Add(new
-                {
-                    ts.TimeSlotID,
-                    DisplayTime = startTime + " - " + endTime
-                });
-            }
+            // Use repository to get available time slots
+            var availableSlots = repository.GetAvailableTimeSlots(audiologistId, selectedDate);
 
             cmbTimeSlots.DataSource = availableSlots;
             cmbTimeSlots.DisplayMember = "DisplayTime";
@@ -462,7 +388,18 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
             else
             {
-                lblAvailableSlots.Text = "No available time slots for this date";
+                string dayOfWeek = selectedDate.DayOfWeek.ToString();
+                var schedule = repository.GetScheduleByAudiologistAndDay(audiologistId, dayOfWeek);
+
+                if (schedule == null)
+                {
+                    lblAvailableSlots.Text = $"No schedule for {dayOfWeek}";
+                }
+                else
+                {
+                    lblAvailableSlots.Text = "No available time slots for this date";
+                }
+
                 lblAvailableSlots.ForeColor = Color.FromArgb(198, 40, 40); // Dark red
             }
         }

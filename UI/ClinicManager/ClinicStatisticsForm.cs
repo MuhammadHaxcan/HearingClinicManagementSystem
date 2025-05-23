@@ -46,10 +46,13 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
         // Date range for filtering
         private DateTime startDate;
         private DateTime endDate;
+
+        private HearingClinicRepository repository;
         #endregion
 
         public ClinicStatisticsForm()
         {
+            repository = HearingClinicRepository.Instance;
             startDate = DateTime.Now.AddMonths(-3); // Default to last 3 months
             endDate = DateTime.Now;
 
@@ -280,15 +283,12 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
                 Location = new Point(440, 13),
                 Size = new Size(150, 20)
             };
-            cmbAudiologist.Items.Add("All Audiologists");
 
-            foreach (var audiologist in StaticDataProvider.Audiologists)
+            // Load audiologists from repository
+            var audiologists = repository.GetAudiologistsForFilter();
+            foreach (var audiologist in audiologists)
             {
-                var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == audiologist.UserID);
-                if (user != null)
-                {
-                    cmbAudiologist.Items.Add($"Dr. {user.FirstName} {user.LastName}");
-                }
+                cmbAudiologist.Items.Add(audiologist.DisplayName);
             }
             cmbAudiologist.SelectedIndex = 0;
 
@@ -553,76 +553,37 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
 
         private void LoadSummaryStats()
         {
-            // Get all appointments within the date range
-            var allAppointments = StaticDataProvider.Appointments
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .ToList();
-
-            // Total Appointments
-            int totalAppointments = allAppointments.Count;
-            lblTotalAppointments.Text = totalAppointments.ToString();
-
-            // Get completed appointments
-            var completedAppointments = allAppointments
-                .Where(a => a.Status == "Completed")
-                .ToList();
-
-            // Total Revenue (from completed appointments)
-            decimal totalRevenue = completedAppointments.Sum(a => a.Fee);
-            lblTotalRevenue.Text = totalRevenue.ToString("C2");
-
-            // Average Appointment Value
-            decimal avgAppointmentValue = completedAppointments.Count > 0 ?
-                totalRevenue / completedAppointments.Count : 0;
-            lblAverageAppointmentValue.Text = avgAppointmentValue.ToString("C2");
-
-            // Most Active Doctor
-            var appointmentsByDoctor = allAppointments
-                .GroupBy(a => a.AudiologistID)
-                .Select(g => new { AudiologistID = g.Key, Count = g.Count() })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-
-            if (appointmentsByDoctor.Any())
+            // Get summary statistics from repository
+            var stats = repository.GetAppointmentSummaryStats(startDate, endDate);
+            
+            // Update UI with the retrieved statistics
+            lblTotalAppointments.Text = stats.TotalAppointments.ToString();
+            lblTotalRevenue.Text = stats.TotalRevenue.ToString("C2");
+            lblAverageAppointmentValue.Text = stats.AverageAppointmentValue.ToString("C2");
+            
+            if (stats.MostActiveDoctorAppointmentCount > 0)
             {
-                var topDoctor = appointmentsByDoctor.First();
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == topDoctor.AudiologistID);
-                if (audiologist != null)
-                {
-                    var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == audiologist.UserID);
-                    if (user != null)
-                    {
-                        lblMostActiveDoctor.Text = $"Dr. {user.FirstName} {user.LastName} ({topDoctor.Count})";
-                    }
-                }
+                lblMostActiveDoctor.Text = $"{stats.MostActiveDoctor} ({stats.MostActiveDoctorAppointmentCount})";
             }
             else
             {
                 lblMostActiveDoctor.Text = "No data available";
             }
-
-            // Completion Rate
-            double completionRate = totalAppointments > 0 ?
-                (double)completedAppointments.Count / totalAppointments * 100 : 0;
-            lblCompletionRate.Text = completionRate.ToString("F1") + "%";
-
-            // Cancellation Rate
-            int cancelledAppointments = allAppointments.Count(a => a.Status == "Cancelled");
-            double cancellationRate = totalAppointments > 0 ?
-                (double)cancelledAppointments / totalAppointments * 100 : 0;
-            lblCancellationRate.Text = cancellationRate.ToString("F1") + "%";
-
+            
+            lblCompletionRate.Text = stats.CompletionRate.ToString("F1") + "%";
+            lblCancellationRate.Text = stats.CancellationRate.ToString("F1") + "%";
+            
             // Color coding for rates
-            if (completionRate >= 80)
+            if (stats.CompletionRate >= 80)
                 lblCompletionRate.ForeColor = Color.FromArgb(40, 167, 69);
-            else if (completionRate >= 60)
+            else if (stats.CompletionRate >= 60)
                 lblCompletionRate.ForeColor = Color.FromArgb(255, 193, 7);
             else
                 lblCompletionRate.ForeColor = Color.FromArgb(220, 53, 69);
 
-            if (cancellationRate <= 10)
+            if (stats.CancellationRate <= 10)
                 lblCancellationRate.ForeColor = Color.FromArgb(40, 167, 69);
-            else if (cancellationRate <= 20)
+            else if (stats.CancellationRate <= 20)
                 lblCancellationRate.ForeColor = Color.FromArgb(255, 193, 7);
             else
                 lblCancellationRate.ForeColor = Color.FromArgb(220, 53, 69);
@@ -652,47 +613,23 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvTopAudiologists.Columns["TotalRevenue"].FillWeight = 60;
             dgvTopAudiologists.Columns["AvgRevenue"].FillWeight = 60;
 
-            // Get all appointments within date range
-            var appointments = StaticDataProvider.Appointments
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .ToList();
-
-            // Group appointments by audiologist
-            var audiologistStats = appointments
-                .GroupBy(a => a.AudiologistID)
-                .Select(g => new {
-                    AudiologistID = g.Key,
-                    TotalAppointments = g.Count(),
-                    CompletedAppointments = g.Count(a => a.Status == "Completed"),
-                    CancelledAppointments = g.Count(a => a.Status == "Cancelled"),
-                    TotalRevenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee)
-                })
-                .OrderByDescending(a => a.TotalRevenue)
-                .ToList();
+            // Get audiologist statistics from repository
+            var audiologistStats = repository.GetTopAudiologistStats(startDate, endDate);
 
             // Add data rows
             for (int i = 0; i < audiologistStats.Count; i++)
             {
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == audiologistStats[i].AudiologistID);
-                if (audiologist == null) continue;
-
-                var user = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == audiologist.UserID);
-                if (user == null) continue;
-
-                string name = $"Dr. {user.FirstName} {user.LastName}";
-
-                decimal avgRevenue = audiologistStats[i].CompletedAppointments > 0 ?
-                    audiologistStats[i].TotalRevenue / audiologistStats[i].CompletedAppointments : 0;
-
+                var stat = audiologistStats[i];
+                
                 dgvTopAudiologists.Rows.Add(
                     (i + 1).ToString(),
-                    audiologistStats[i].AudiologistID.ToString(),
-                    name,
-                    audiologistStats[i].TotalAppointments.ToString("N0"),
-                    audiologistStats[i].CompletedAppointments.ToString("N0"),
-                    audiologistStats[i].CancelledAppointments.ToString("N0"),
-                    audiologistStats[i].TotalRevenue.ToString("C2"),
-                    avgRevenue.ToString("C2")
+                    stat.AudiologistID.ToString(),
+                    stat.Name,
+                    stat.TotalAppointments.ToString("N0"),
+                    stat.CompletedAppointments.ToString("N0"),
+                    stat.CancelledAppointments.ToString("N0"),
+                    stat.TotalRevenue.ToString("C2"),
+                    stat.AverageRevenue.ToString("C2")
                 );
 
                 // Highlight top 3
@@ -726,41 +663,18 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvRecentAppointments.Columns["Fee"].FillWeight = 60;
             dgvRecentAppointments.Columns["Status"].FillWeight = 60;
 
-            // Get most recent appointments (completed or upcoming)
-            var recentAppointments = StaticDataProvider.Appointments
-                .OrderByDescending(a => a.Date)
-                .Take(15)
-                .ToList();
+            // Get recent appointments from repository
+            var recentAppointments = repository.GetRecentAppointments(15);
 
             // Add data rows
             foreach (var appointment in recentAppointments)
             {
-                // Get patient info
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == appointment.PatientID);
-                var patientName = "Unknown";
-                if (patient != null)
-                {
-                    var patientUser = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == patient.UserID);
-                    if (patientUser != null)
-                        patientName = $"{patientUser.FirstName} {patientUser.LastName}";
-                }
-
-                // Get audiologist info
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
-                var audiologistName = "Unknown";
-                if (audiologist != null)
-                {
-                    var audiologistUser = StaticDataProvider.Users.FirstOrDefault(u => u.UserID == audiologist.UserID);
-                    if (audiologistUser != null)
-                        audiologistName = $"Dr. {audiologistUser.FirstName} {audiologistUser.LastName}";
-                }
-
                 var row = dgvRecentAppointments.Rows.Add(
                     appointment.AppointmentID.ToString(),
                     appointment.Date.ToString("g"),
-                    patientName,
-                    audiologistName,
-                    appointment.PurposeOfVisit,
+                    appointment.PatientName,
+                    appointment.AudiologistName,
+                    appointment.Purpose,
                     appointment.Fee.ToString("C2"),
                     appointment.Status
                 );
@@ -796,73 +710,30 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             int? selectedAudiologistId = null;
             if (cmbAudiologist.SelectedIndex > 0)
             {
-                string selectedName = cmbAudiologist.SelectedItem.ToString();
-                selectedName = selectedName.Replace("Dr. ", "");
-                var selectedUser = StaticDataProvider.Users.FirstOrDefault(u =>
-                    $"{u.FirstName} {u.LastName}" == selectedName);
-
-                if (selectedUser != null)
-                {
-                    var selectedAudiologist = StaticDataProvider.Audiologists.FirstOrDefault(a =>
-                        a.UserID == selectedUser.UserID);
-
-                    if (selectedAudiologist != null)
-                        selectedAudiologistId = selectedAudiologist.AudiologistID;
-                }
+                var audiologists = repository.GetAudiologistsForFilter();
+                selectedAudiologistId = audiologists[cmbAudiologist.SelectedIndex].AudiologistID;
             }
 
-            // Get appointments within date range and filter by audiologist if selected
-            var appointments = StaticDataProvider.Appointments
-                .Where(a => a.Status == "Completed")
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .Where(a => !selectedAudiologistId.HasValue || a.AudiologistID == selectedAudiologistId.Value)
-                .ToList();
-
-            // Group appointments by purpose
-            var financialSummary = appointments
-                .GroupBy(a => a.PurposeOfVisit)
-                .Select(g => new {
-                    Purpose = g.Key,
-                    Count = g.Count(),
-                    TotalRevenue = g.Sum(a => a.Fee),
-                    AvgRevenue = g.Average(a => a.Fee)
-                })
-                .OrderByDescending(s => s.TotalRevenue)
-                .ToList();
-
-            // Calculate totals for percentage
-            decimal totalRevenue = appointments.Sum(a => a.Fee);
+            // Get financial summary from repository
+            var financialSummary = repository.GetFinancialSummaryByPurpose(startDate, endDate, selectedAudiologistId);
 
             // Add data rows
             foreach (var summary in financialSummary)
             {
-                decimal percentOfTotal = totalRevenue > 0 ? (summary.TotalRevenue / totalRevenue) * 100 : 0;
-
-                dgvFinancialSummary.Rows.Add(
+                int rowIndex = dgvFinancialSummary.Rows.Add(
                     summary.Purpose,
                     summary.Count.ToString("N0"),
                     summary.TotalRevenue.ToString("C2"),
-                    summary.AvgRevenue.ToString("C2"),
-                    percentOfTotal.ToString("F1") + "%"
-                );
-            }
-
-            // Add total row
-            if (financialSummary.Count > 0)
-            {
-                int totalCount = financialSummary.Sum(s => s.Count);
-                decimal avgRevenue = totalRevenue / totalCount;
-
-                var totalRow = dgvFinancialSummary.Rows.Add(
-                    "TOTAL",
-                    totalCount.ToString("N0"),
-                    totalRevenue.ToString("C2"),
-                    avgRevenue.ToString("C2"),
-                    "100%"
+                    summary.AverageRevenue.ToString("C2"),
+                    summary.PercentOfTotal.ToString("F1") + "%"
                 );
 
-                dgvFinancialSummary.Rows[totalRow].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
-                dgvFinancialSummary.Rows[totalRow].DefaultCellStyle.Font = new Font(dgvFinancialSummary.Font, FontStyle.Bold);
+                // Highlight the total row
+                if (summary.Purpose == "TOTAL")
+                {
+                    dgvFinancialSummary.Rows[rowIndex].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+                    dgvFinancialSummary.Rows[rowIndex].DefaultCellStyle.Font = new Font(dgvFinancialSummary.Font, FontStyle.Bold);
+                }
             }
         }
 
@@ -879,75 +750,29 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             int? selectedAudiologistId = null;
             if (cmbAudiologist.SelectedIndex > 0)
             {
-                string selectedName = cmbAudiologist.SelectedItem.ToString();
-                selectedName = selectedName.Replace("Dr. ", "");
-                var selectedUser = StaticDataProvider.Users.FirstOrDefault(u =>
-                    $"{u.FirstName} {u.LastName}" == selectedName);
-
-                if (selectedUser != null)
-                {
-                    var selectedAudiologist = StaticDataProvider.Audiologists.FirstOrDefault(a =>
-                        a.UserID == selectedUser.UserID);
-
-                    if (selectedAudiologist != null)
-                        selectedAudiologistId = selectedAudiologist.AudiologistID;
-                }
+                var audiologists = repository.GetAudiologistsForFilter();
+                selectedAudiologistId = audiologists[cmbAudiologist.SelectedIndex].AudiologistID;
             }
 
-            // Get appointments within date range and filter by audiologist if selected
-            var appointments = StaticDataProvider.Appointments
-                .Where(a => a.Status == "Completed")
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .Where(a => !selectedAudiologistId.HasValue || a.AudiologistID == selectedAudiologistId.Value)
-                .ToList();
-
-            // Get invoices for these appointments
-            var appointmentIds = appointments.Select(a => a.AppointmentID).ToList();
-            var invoices = StaticDataProvider.Invoices
-                .Where(i => i.AppointmentID.HasValue && appointmentIds.Contains(i.AppointmentID.Value))
-                .ToList();
-
-            // Group invoices by payment method
-            var paymentSummary = invoices
-                .GroupBy(i => i.PaymentMethod ?? "Unknown")
-                .Select(g => new {
-                    Method = g.Key,
-                    Count = g.Count(),
-                    TotalAmount = g.Sum(i => i.TotalAmount)
-                })
-                .OrderByDescending(s => s.TotalAmount)
-                .ToList();
-
-            // Calculate total for percentage
-            decimal totalAmount = invoices.Sum(i => i.TotalAmount);
+            // Get payment method statistics from repository
+            var paymentSummary = repository.GetPaymentMethodStats(startDate, endDate, selectedAudiologistId);
 
             // Add data rows
             foreach (var summary in paymentSummary)
             {
-                decimal percentOfTotal = totalAmount > 0 ? (summary.TotalAmount / totalAmount) * 100 : 0;
-
-                dgvPaymentMethods.Rows.Add(
-                    summary.Method,
+                int rowIndex = dgvPaymentMethods.Rows.Add(
+                    summary.PaymentMethod,
                     summary.Count.ToString("N0"),
                     summary.TotalAmount.ToString("C2"),
-                    percentOfTotal.ToString("F1") + "%"
-                );
-            }
-
-            // Add total row
-            if (paymentSummary.Count > 0)
-            {
-                int totalCount = paymentSummary.Sum(s => s.Count);
-
-                var totalRow = dgvPaymentMethods.Rows.Add(
-                    "TOTAL",
-                    totalCount.ToString("N0"),
-                    totalAmount.ToString("C2"),
-                    "100%"
+                    summary.PercentOfTotal.ToString("F1") + "%"
                 );
 
-                dgvPaymentMethods.Rows[totalRow].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
-                dgvPaymentMethods.Rows[totalRow].DefaultCellStyle.Font = new Font(dgvPaymentMethods.Font, FontStyle.Bold);
+                // Highlight the total row
+                if (summary.PaymentMethod == "TOTAL")
+                {
+                    dgvPaymentMethods.Rows[rowIndex].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+                    dgvPaymentMethods.Rows[rowIndex].DefaultCellStyle.Font = new Font(dgvPaymentMethods.Font, FontStyle.Bold);
+                }
             }
         }
 
@@ -963,85 +788,36 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             dgvMonthlyRevenue.Columns.Add("AvgRevenue", "Avg. Revenue");
             dgvMonthlyRevenue.Columns.Add("CompletionRate", "Completion Rate");
 
-            // Get start of first day of month, 12 months ago
-            DateTime startMonth = new DateTime(DateTime.Now.AddMonths(-11).Year, DateTime.Now.AddMonths(-11).Month, 1);
-
             // Get selected audiologist
             int? selectedAudiologistId = null;
             if (cmbAudiologist.SelectedIndex > 0)
             {
-                string selectedName = cmbAudiologist.SelectedItem.ToString();
-                selectedName = selectedName.Replace("Dr. ", "");
-                var selectedUser = StaticDataProvider.Users.FirstOrDefault(u =>
-                    $"{u.FirstName} {u.LastName}" == selectedName);
-
-                if (selectedUser != null)
-                {
-                    var selectedAudiologist = StaticDataProvider.Audiologists.FirstOrDefault(a =>
-                        a.UserID == selectedUser.UserID);
-
-                    if (selectedAudiologist != null)
-                        selectedAudiologistId = selectedAudiologist.AudiologistID;
-                }
+                var audiologists = repository.GetAudiologistsForFilter();
+                selectedAudiologistId = audiologists[cmbAudiologist.SelectedIndex].AudiologistID;
             }
 
-            // Get appointments within the range
-            var appointments = StaticDataProvider.Appointments
-                .Where(a => a.Date >= startMonth && a.Date <= DateTime.Now)
-                .Where(a => !selectedAudiologistId.HasValue || a.AudiologistID == selectedAudiologistId.Value)
-                .ToList();
-
-            // Group appointments by month
-            var monthlyStats = appointments
-                .GroupBy(a => new { Year = a.Date.Year, Month = a.Date.Month })
-                .OrderByDescending(g => g.Key.Year).ThenByDescending(g => g.Key.Month)
-                .Select(g => new {
-                    Month = GetMonthName(g.Key.Month),
-                    Year = g.Key.Year,
-                    TotalCount = g.Count(),
-                    CompletedCount = g.Count(a => a.Status == "Completed"),
-                    Revenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee),
-                })
-                .ToList();
+            // Get monthly revenue statistics from repository
+            var monthlyStats = repository.GetMonthlyRevenueStats(12, selectedAudiologistId);
 
             // Add data rows
             foreach (var stat in monthlyStats)
             {
-                decimal avgRevenue = stat.CompletedCount > 0 ? stat.Revenue / stat.CompletedCount : 0;
-                double completionRate = stat.TotalCount > 0 ? (double)stat.CompletedCount / stat.TotalCount * 100 : 0;
-
-                dgvMonthlyRevenue.Rows.Add(
+                int rowIndex = dgvMonthlyRevenue.Rows.Add(
                     stat.Month,
-                    stat.Year.ToString(),
-                    stat.TotalCount.ToString("N0"),
+                    stat.Month == "TOTAL" ? "" : stat.Year.ToString(),
+                    stat.AppointmentCount.ToString("N0"),
                     stat.CompletedCount.ToString("N0"),
                     stat.Revenue.ToString("C2"),
-                    avgRevenue.ToString("C2"),
-                    completionRate.ToString("F1") + "%"
-                );
-            }
-
-            // Add a total row if we have data
-            if (monthlyStats.Count > 0)
-            {
-                int totalCount = monthlyStats.Sum(s => s.TotalCount);
-                int completedCount = monthlyStats.Sum(s => s.CompletedCount);
-                decimal totalRevenue = monthlyStats.Sum(s => s.Revenue);
-                decimal avgRevenue = completedCount > 0 ? totalRevenue / completedCount : 0;
-                double completionRate = totalCount > 0 ? (double)completedCount / totalCount * 100 : 0;
-
-                var totalRow = dgvMonthlyRevenue.Rows.Add(
-                    "TOTAL",
-                    "",
-                    totalCount.ToString("N0"),
-                    completedCount.ToString("N0"),
-                    totalRevenue.ToString("C2"),
-                    avgRevenue.ToString("C2"),
-                    completionRate.ToString("F1") + "%"
+                    stat.AverageRevenue.ToString("C2"),
+                    stat.CompletionRate.ToString("F1") + "%"
                 );
 
-                dgvMonthlyRevenue.Rows[totalRow].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
-                dgvMonthlyRevenue.Rows[totalRow].DefaultCellStyle.Font = new Font(dgvMonthlyRevenue.Font, FontStyle.Bold);
+                // Highlight the total row
+                if (stat.Month == "TOTAL")
+                {
+                    dgvMonthlyRevenue.Rows[rowIndex].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+                    dgvMonthlyRevenue.Rows[rowIndex].DefaultCellStyle.Font = new Font(dgvMonthlyRevenue.Font, FontStyle.Bold);
+                }
             }
 
             // Apply cell formatting
@@ -1090,86 +866,32 @@ namespace HearingClinicManagementSystem.UI.ClinicManager
             int? selectedAudiologistId = null;
             if (cmbAudiologist.SelectedIndex > 0)
             {
-                string selectedName = cmbAudiologist.SelectedItem.ToString();
-                selectedName = selectedName.Replace("Dr. ", "");
-                var selectedUser = StaticDataProvider.Users.FirstOrDefault(u =>
-                    $"{u.FirstName} {u.LastName}" == selectedName);
-
-                if (selectedUser != null)
-                {
-                    var selectedAudiologist = StaticDataProvider.Audiologists.FirstOrDefault(a =>
-                        a.UserID == selectedUser.UserID);
-
-                    if (selectedAudiologist != null)
-                        selectedAudiologistId = selectedAudiologist.AudiologistID;
-                }
+                var audiologists = repository.GetAudiologistsForFilter();
+                selectedAudiologistId = audiologists[cmbAudiologist.SelectedIndex].AudiologistID;
             }
 
-            // Get appointments within date range and filter by audiologist if selected
-            var appointments = StaticDataProvider.Appointments
-                .Where(a => a.Date >= startDate && a.Date <= endDate)
-                .Where(a => !selectedAudiologistId.HasValue || a.AudiologistID == selectedAudiologistId.Value)
-                .ToList();
-
-            // Group appointments by purpose of visit
-            var appointmentsByPurpose = appointments
-                .GroupBy(a => a.PurposeOfVisit)
-                .Select(g => new {
-                    Purpose = g.Key,
-                    Count = g.Count(),
-                    CompletedCount = g.Count(a => a.Status == "Completed"),
-                    TotalRevenue = g.Where(a => a.Status == "Completed").Sum(a => a.Fee)
-                })
-                .OrderByDescending(a => a.Count)
-                .ToList();
-
-            // Calculate total for percentage
-            int totalAppointments = appointments.Count;
+            // Get visit purpose statistics from repository
+            var purposeStats = repository.GetVisitPurposeStats(startDate, endDate, selectedAudiologistId);
 
             // Add data rows
-            foreach (var summary in appointmentsByPurpose)
+            foreach (var stat in purposeStats)
             {
-                double percentage = totalAppointments > 0 ?
-                    (double)summary.Count / totalAppointments * 100 : 0;
-
-                decimal avgFee = summary.CompletedCount > 0 ?
-                    summary.TotalRevenue / summary.CompletedCount : 0;
-
-                dgvPurposeDistribution.Rows.Add(
-                    summary.Purpose,
-                    summary.Count.ToString("N0"),
-                    summary.CompletedCount.ToString("N0"),
-                    percentage.ToString("F1") + "%",
-                    avgFee.ToString("C2"),
-                    summary.TotalRevenue.ToString("C2")
-                );
-            }
-
-            // Add total row
-            if (appointmentsByPurpose.Count > 0)
-            {
-                int totalCount = appointmentsByPurpose.Sum(s => s.Count);
-                int totalCompletedCount = appointmentsByPurpose.Sum(s => s.CompletedCount);
-                decimal totalRevenue = appointmentsByPurpose.Sum(s => s.TotalRevenue);
-                decimal avgFee = totalCompletedCount > 0 ? totalRevenue / totalCompletedCount : 0;
-
-                var totalRow = dgvPurposeDistribution.Rows.Add(
-                    "TOTAL",
-                    totalCount.ToString("N0"),
-                    totalCompletedCount.ToString("N0"),
-                    "100%",
-                    avgFee.ToString("C2"),
-                    totalRevenue.ToString("C2")
+                int rowIndex = dgvPurposeDistribution.Rows.Add(
+                    stat.Purpose,
+                    stat.Count.ToString("N0"),
+                    stat.CompletedCount.ToString("N0"),
+                    stat.Percentage.ToString("F1") + "%",
+                    stat.AverageFee.ToString("C2"),
+                    stat.TotalRevenue.ToString("C2")
                 );
 
-                dgvPurposeDistribution.Rows[totalRow].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
-                dgvPurposeDistribution.Rows[totalRow].DefaultCellStyle.Font = new Font(dgvPurposeDistribution.Font, FontStyle.Bold);
+                // Highlight the total row
+                if (stat.Purpose == "TOTAL")
+                {
+                    dgvPurposeDistribution.Rows[rowIndex].DefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+                    dgvPurposeDistribution.Rows[rowIndex].DefaultCellStyle.Font = new Font(dgvPurposeDistribution.Font, FontStyle.Bold);
+                }
             }
-        }
-
-        private string GetMonthName(int month)
-        {
-            return new DateTime(2020, month, 1).ToString("MMMM");
         }
         #endregion
 

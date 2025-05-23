@@ -32,10 +32,12 @@ namespace HearingClinicManagementSystem.UI.Receptionist
         private Button btnCancel;
         private Panel pnlDetail;
         private int selectedAppointmentId;
+        private HearingClinicRepository repository;
         #endregion
 
         public ManageAppointmentForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadAppointments();
         }
@@ -432,7 +434,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             }
         }
 
-
         private void DgvAppointments_SelectionChanged(object sender, EventArgs e)
         {
             if (dgvAppointments.SelectedRows.Count > 0)
@@ -440,14 +441,23 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 selectedAppointmentId = (int)dgvAppointments.SelectedRows[0].Cells["AppointmentID"].Value;
                 LoadAppointmentDetails(selectedAppointmentId);
 
-                // Enable/disable buttons based on appointment status
+                // Get the appointment status
                 string status = dgvAppointments.SelectedRows[0].Cells["Status"].Value.ToString();
-                bool isActionable = status == "Pending";
-                SetActionButtonsState(isActionable);
+                
+                // Enable/disable buttons based on appointment status
+                // Only Pending appointments can be confirmed
+                bool canConfirm = status == "Pending";
+                // Only Pending appointments can be cancelled - confirmed appointments cannot be cancelled
+                bool canCancel = status == "Pending";
+                
+                // Update buttons' state
+                btnConfirm.Enabled = canConfirm;
+                btnCancel.Enabled = canCancel;
 
                 // Make fee setting more obvious for pending appointments
                 if (status == "Pending")
                 {
+                    nudFee.Enabled = true;
                     nudFee.Focus();
                     lblFee.ForeColor = Color.FromArgb(192, 0, 0); // Red to indicate required
 
@@ -457,6 +467,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 }
                 else
                 {
+                    nudFee.Enabled = false;
                     lblFee.ForeColor = Color.FromArgb(0, 100, 150); // Back to normal
                     nudFee.BackColor = SystemColors.Control; // Gray for non-editable
                 }
@@ -467,7 +478,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 SetActionButtonsState(false);
             }
         }
-        // Modified BtnConfirm_Click method to remove invoice creation
+
         private void BtnConfirm_Click(object sender, EventArgs e)
         {
             if (selectedAppointmentId <= 0)
@@ -484,13 +495,6 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 return;
             }
 
-            var appointment = StaticDataProvider.Appointments.FirstOrDefault(a => a.AppointmentID == selectedAppointmentId);
-            if (appointment == null)
-            {
-                UIService.ShowError("Appointment not found");
-                return;
-            }
-
             // Confirm the appointment fee with the user - simplified dialog
             DialogResult confirmResult = MessageBox.Show(
                 $"Confirm appointment with fee: {nudFee.Value:C}?",
@@ -503,15 +507,27 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 return;
             }
 
-            // Update appointment status and fee
-            appointment.Status = "Confirmed";
-            appointment.Fee = nudFee.Value;
-
-            // REMOVED: Invoice creation code - will be handled elsewhere
-
-            UIService.ShowSuccess($"Appointment confirmed with fee: {nudFee.Value:C}");
-            LoadAppointments();
+            try
+            {
+                // Update appointment status and fee using repository
+                bool success = repository.ConfirmAppointment(selectedAppointmentId, nudFee.Value);
+                
+                if (success)
+                {
+                    UIService.ShowSuccess($"Appointment confirmed with fee: {nudFee.Value:C}");
+                    LoadAppointments();
+                }
+                else
+                {
+                    UIService.ShowError("Failed to confirm appointment. It may have already been processed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error confirming appointment: {ex.Message}");
+            }
         }
+
         private void BtnCancel_Click(object sender, EventArgs e)
         {
             if (selectedAppointmentId <= 0)
@@ -519,26 +535,44 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 UIService.ShowError("Please select an appointment first");
                 return;
             }
-
-            var appointment = StaticDataProvider.Appointments.FirstOrDefault(a => a.AppointmentID == selectedAppointmentId);
-            if (appointment == null)
+            
+            // Get the current appointment status
+            string status = string.Empty;
+            foreach (DataGridViewRow row in dgvAppointments.Rows)
             {
-                UIService.ShowError("Appointment not found");
+                if ((int)row.Cells["AppointmentID"].Value == selectedAppointmentId)
+                {
+                    status = row.Cells["Status"].Value.ToString();
+                    break;
+                }
+            }
+            
+            // Check if the appointment is confirmed - if so, show error and return
+            if (status == "Confirmed")
+            {
+                UIService.ShowError("Cannot cancel confirmed appointments. Please contact a manager if this is necessary.");
                 return;
             }
 
-            // Update appointment status
-            appointment.Status = "Cancelled";
-
-            // Release the time slot
-            var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == appointment.TimeSlotID);
-            if (timeSlot != null)
+            try
             {
-                timeSlot.IsAvailable = true;
+                // Cancel appointment using repository
+                bool success = repository.CancelAppointment(selectedAppointmentId);
+                
+                if (success)
+                {
+                    LoadAppointments();
+                    UIService.ShowSuccess("Appointment cancelled successfully");
+                }
+                else
+                {
+                    UIService.ShowError("Failed to cancel appointment. It may have already been processed.");
+                }
             }
-
-            LoadAppointments();
-            UIService.ShowSuccess("Appointment cancelled successfully");
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error cancelling appointment: {ex.Message}");
+            }
         }
         #endregion
 
@@ -572,15 +606,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             dgvAppointments.Rows.Clear();
             selectedAppointmentId = 0;
 
-            var appointments = StaticDataProvider.Appointments
-                .OrderByDescending(a => a.Status == "Pending") // Show pending first
-                .ThenByDescending(a => a.Date);  // Most recent appointments first
+            var appointments = repository.GetAllAppointmentsWithDetails();
 
             foreach (var appointment in appointments)
             {
-                var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == appointment.PatientID);
-                var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
-                var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == appointment.TimeSlotID);
+                var patient = appointment.Patient;
+                var audiologist = appointment.Audiologist;
+                var timeSlot = appointment.TimeSlot;
 
                 if (patient?.User != null && audiologist?.User != null && timeSlot != null)
                 {
@@ -624,16 +656,16 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
         private void LoadAppointmentDetails(int appointmentId)
         {
-            var appointment = StaticDataProvider.Appointments.FirstOrDefault(a => a.AppointmentID == appointmentId);
+            var appointment = repository.GetAppointmentWithDetails(appointmentId);
             if (appointment == null)
             {
                 ClearAppointmentDetails();
                 return;
             }
 
-            var patient = StaticDataProvider.Patients.FirstOrDefault(p => p.PatientID == appointment.PatientID);
-            var audiologist = StaticDataProvider.Audiologists.FirstOrDefault(a => a.AudiologistID == appointment.AudiologistID);
-            var timeSlot = StaticDataProvider.TimeSlots.FirstOrDefault(ts => ts.TimeSlotID == appointment.TimeSlotID);
+            var patient = appointment.Patient;
+            var audiologist = appointment.Audiologist;
+            var timeSlot = appointment.TimeSlot;
 
             if (patient?.User != null && audiologist?.User != null && timeSlot != null)
             {
@@ -683,8 +715,8 @@ namespace HearingClinicManagementSystem.UI.Receptionist
 
         private void SetActionButtonsState(bool enabled)
         {
-            btnConfirm.Enabled = enabled;
-            btnCancel.Enabled = enabled;
+            // This is now handled directly in DgvAppointments_SelectionChanged
+            // Keep this method for backward compatibility but make it only affect the fee
             nudFee.Enabled = enabled;
 
             // Visual indication that fee is editable only for pending appointments

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Drawing;
 using System.Windows.Forms;
 using HearingClinicManagementSystem.Data;
+using HearingClinicManagementSystem.Models;
 using HearingClinicManagementSystem.Services;
 using HearingClinicManagementSystem.UI.Constants;
 using HearingClinicManagementSystem.UI.Common.HearingClinicManagementSystem.UI.Common;
@@ -19,10 +20,14 @@ namespace HearingClinicManagementSystem.UI.Patient
         private DateTimePicker dtpDateOfBirth;
         private TextBox txtAddress;
         private Button btnSave;
+        private HearingClinicRepository repository;
+        private User currentUser;
+        private Models.Patient currentPatient;
         #endregion
 
         public UpdatePersonalInfoForm()
         {
+            repository = HearingClinicRepository.Instance;
             InitializeComponents();
             LoadPatientData();
         }
@@ -149,20 +154,31 @@ namespace HearingClinicManagementSystem.UI.Patient
                 return;
             }
 
-            var patient = AuthService.CurrentPatient;
-            var user = StaticDataProvider.Users.First(u => u.UserID == patient.UserID);
-
             // Update user info
-            user.FirstName = txtFirstName.Text;
-            user.LastName = txtLastName.Text;
-            user.Email = txtEmail.Text;
-            user.Phone = txtPhone.Text;
+            currentUser.FirstName = txtFirstName.Text;
+            currentUser.LastName = txtLastName.Text;
+            currentUser.Email = txtEmail.Text;
+            currentUser.Phone = txtPhone.Text;
 
             // Update patient info
-            patient.DateOfBirth = dtpDateOfBirth.Value;
-            patient.Address = txtAddress.Text;
+            currentPatient.DateOfBirth = dtpDateOfBirth.Value;
+            currentPatient.Address = txtAddress.Text;
 
-            UIService.ShowSuccess("Personal information updated successfully!");
+            try
+            {
+                // Save changes to database
+                repository.UpdateUser(currentUser);
+                repository.UpdatePatient(currentPatient);
+
+                // Refresh AuthService data
+                AuthService.RefreshCurrentUser();
+
+                UIService.ShowSuccess("Personal information updated successfully!");
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error updating information: {ex.Message}");
+            }
         }
         #endregion
 
@@ -199,15 +215,48 @@ namespace HearingClinicManagementSystem.UI.Patient
 
         private void LoadPatientData()
         {
-            var patient = AuthService.CurrentPatient;
-            var user = StaticDataProvider.Users.First(u => u.UserID == patient.UserID);
+            try
+            {
+                int patientId = AuthService.CurrentPatient?.PatientID ?? 0;
+                
+                if (patientId == 0)
+                {
+                    UIService.ShowError("No patient is currently logged in");
+                    return;
+                }
 
-            txtFirstName.Text = user.FirstName;
-            txtLastName.Text = user.LastName;
-            txtEmail.Text = user.Email;
-            txtPhone.Text = user.Phone;
-            dtpDateOfBirth.Value = patient.DateOfBirth;
-            txtAddress.Text = patient.Address;
+                // Get patient data from repository
+                currentPatient = repository.GetPatientById(patientId);
+                
+                if (currentPatient != null && currentPatient.UserID > 0)
+                {
+                    // Get associated user data from repository
+                    currentUser = repository.GetUserById(currentPatient.UserID);
+                    
+                    if (currentUser != null)
+                    {
+                        // Populate form fields with patient and user data
+                        txtFirstName.Text = currentUser.FirstName;
+                        txtLastName.Text = currentUser.LastName;
+                        txtEmail.Text = currentUser.Email;
+                        txtPhone.Text = currentUser.Phone;
+                        dtpDateOfBirth.Value = currentPatient.DateOfBirth;
+                        txtAddress.Text = currentPatient.Address;
+                    }
+                    else
+                    {
+                        UIService.ShowError("Unable to load user information");
+                    }
+                }
+                else
+                {
+                    UIService.ShowError("Unable to load patient information");
+                }
+            }
+            catch (Exception ex)
+            {
+                UIService.ShowError($"Error loading patient data: {ex.Message}");
+            }
         }
         #endregion
     }
