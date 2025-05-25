@@ -553,7 +553,7 @@ namespace HearingClinicManagementSystem.UI.InventoryManager {
                         Model = txtModel.Text,
                         Features = txtFeatures.Text,
                         Price = nudPrice.Value,
-                        QuantityInStock = (int)nudQuantity.Value
+                        QuantityInStock = 0
                     };
 
                     // Add product using repository
