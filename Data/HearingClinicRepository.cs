@@ -57,6 +57,13 @@ namespace HearingClinicManagementSystem.Data
         //    _context.SaveChanges();
         //}
 
+        public int AddUser(User user)
+        {
+            _context.Users.Add(user);
+            _context.SaveChanges();
+            return user.UserID;
+        }
+
         public void UpdateUser(User user)
         {
             _context.Entry(user).State = EntityState.Modified;
@@ -83,6 +90,13 @@ namespace HearingClinicManagementSystem.Data
         //    _context.Patients.Add(patient);
         //    _context.SaveChanges();
         //}
+
+        public int AddPatient(Patient patient)
+        {
+            _context.Patients.Add(patient);
+            _context.SaveChanges();
+            return patient.PatientID;
+        }
 
         public void UpdatePatient(Patient patient)
         {

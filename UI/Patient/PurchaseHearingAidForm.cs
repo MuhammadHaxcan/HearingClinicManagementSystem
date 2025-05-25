@@ -100,16 +100,19 @@ namespace HearingClinicManagementSystem.UI.Patient
             lblProducts.Height = 25;
             lblProducts.TextAlign = ContentAlignment.MiddleLeft;
 
-            // Products DataGrid
+            // Products DataGrid - remove column headers and Stock column
             dgvProducts = CreateDataGrid(0, false, true);
             dgvProducts.Dock = DockStyle.Fill;
             dgvProducts.MultiSelect = false;
             dgvProducts.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvProducts.Columns.Add("ProductID", "ID");
-            dgvProducts.Columns.Add("Model", "Model");
-            dgvProducts.Columns.Add("Manufacturer", "Manufacturer");
-            dgvProducts.Columns.Add("Price", "Price");
-            dgvProducts.Columns.Add("Stock", "In Stock");
+            dgvProducts.ColumnHeadersVisible = false; // Hide column headers completely
+            
+            // Add columns but without the Stock column
+            dgvProducts.Columns.Add("ProductID", "");
+            dgvProducts.Columns.Add("Model", "");
+            dgvProducts.Columns.Add("Manufacturer", "");
+            dgvProducts.Columns.Add("Price", "");
+            
             dgvProducts.Columns["ProductID"].Visible = false;
             dgvProducts.SelectionChanged += DgvProducts_SelectionChanged;
 
@@ -118,7 +121,7 @@ namespace HearingClinicManagementSystem.UI.Patient
             {
                 Dock = DockStyle.Bottom,
                 Height = 2,
-                BackColor = Color.FromArgb(0, 120, 215) // Use the same blue as the checkout button
+                BackColor = Color.FromArgb(0, 120, 215)
             };
 
             // Product Features Panel - with improved visual design
@@ -135,14 +138,14 @@ namespace HearingClinicManagementSystem.UI.Patient
             {
                 Dock = DockStyle.Top,
                 Height = 28,
-                BackColor = Color.FromArgb(240, 240, 240) // Light gray background
+                BackColor = Color.FromArgb(240, 240, 240)
             };
 
             var lblFeaturesHeader = new Label
             {
                 Text = "Product Features",
                 Font = new Font(this.Font.FontFamily, this.Font.Size, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0, 102, 204), // Darker blue for better contrast
+                ForeColor = Color.FromArgb(0, 102, 204),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Dock = DockStyle.Fill,
                 Padding = new Padding(5, 0, 0, 0)
@@ -188,7 +191,7 @@ namespace HearingClinicManagementSystem.UI.Patient
             {
                 Dock = DockStyle.Bottom,
                 Height = 40,
-                BackColor = Color.FromArgb(245, 245, 245) // Light gray background
+                BackColor = Color.FromArgb(245, 245, 245)
             };
 
             var lblQuantity = CreateLabel("Quantity:", 10, 10);
@@ -200,19 +203,18 @@ namespace HearingClinicManagementSystem.UI.Patient
             nudQuantity.Value = 1;
 
             btnAddToCart = CreateButton("Add to Cart", nudQuantity.Right + 10, 8, BtnAddToCart_Click, 100, 24);
-            // Use the helper method for consistent button styling
             ApplyButtonStyle(btnAddToCart);
 
             pnlAddToCart.Controls.AddRange(new Control[] { lblQuantity, nudQuantity, btnAddToCart });
 
             // Add all panels to main product panel in correct order
             pnlProducts.Controls.AddRange(new Control[] {
-        lblProducts,
-        dgvProducts,
-        pnlAddToCart,
-        pnlSeparator,
-        pnlProductFeatures
-    });
+                lblProducts,
+                dgvProducts,
+                pnlAddToCart,
+                pnlSeparator,
+                pnlProductFeatures
+            });
 
             parent.Controls.Add(pnlProducts, 0, 0);
         }
@@ -618,16 +620,20 @@ namespace HearingClinicManagementSystem.UI.Patient
         {
             dgvProducts.Rows.Clear();
             var repository = HearingClinicRepository.Instance;
-            var products = repository.GetAllProducts();
+            
+            // Only get products with quantity > 0 but don't show the quantity
+            var products = repository.GetAllProducts()
+                .Where(p => p.QuantityInStock > 0)
+                .ToList();
             
             foreach (var product in products)
             {
+                // No longer include stock column in the data
                 dgvProducts.Rows.Add(
                     product.ProductID,
                     product.Model,
                     product.Manufacturer,
-                    product.Price.ToString("C"),
-                    product.QuantityInStock
+                    product.Price.ToString("C")
                 );
             }
         }

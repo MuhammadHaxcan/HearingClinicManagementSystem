@@ -528,24 +528,28 @@ namespace HearingClinicManagementSystem.UI.Receptionist
             dgvConfirmedOrders.Columns.Add("PaidAmount", "Paid");
             dgvConfirmedOrders.Columns.Add("RemainingAmount", "Remaining");
             dgvConfirmedOrders.Columns.Add("Status", "Status");
-            dgvConfirmedOrders.Columns.Add("ItemCount", "Items");
+            dgvConfirmedOrders.Columns.Add("Items", "Products"); // Renamed column from "Items" to "Products" for clarity
 
             // Set column widths as percentages for better optimization
             dgvConfirmedOrders.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvConfirmedOrders.Columns["OrderID"].FillWeight = 8;
-            dgvConfirmedOrders.Columns["OrderDate"].FillWeight = 12;
-            dgvConfirmedOrders.Columns["Patient"].FillWeight = 20;
+            dgvConfirmedOrders.Columns["OrderDate"].FillWeight = 10; // Reduced to give more space for products
+            dgvConfirmedOrders.Columns["Patient"].FillWeight = 15;  // Reduced to give more space for products
             dgvConfirmedOrders.Columns["TotalAmount"].FillWeight = 12;
-            dgvConfirmedOrders.Columns["PaidAmount"].FillWeight = 12;
-            dgvConfirmedOrders.Columns["RemainingAmount"].FillWeight = 12;
-            dgvConfirmedOrders.Columns["Status"].FillWeight = 12;
-            dgvConfirmedOrders.Columns["ItemCount"].FillWeight = 10;
+            dgvConfirmedOrders.Columns["PaidAmount"].FillWeight = 10;
+            dgvConfirmedOrders.Columns["RemainingAmount"].FillWeight = 10;
+            dgvConfirmedOrders.Columns["Status"].FillWeight = 10;
+            dgvConfirmedOrders.Columns["Items"].FillWeight = 25;   // Increased to show product names
 
             // Style the grid header
             dgvConfirmedOrders.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
             dgvConfirmedOrders.ColumnHeadersDefaultCellStyle.Font = new Font(dgvConfirmedOrders.Font, FontStyle.Bold);
             dgvConfirmedOrders.ColumnHeadersHeight = 35;
             dgvConfirmedOrders.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+
+            // Add text wrapping for the Products column
+            dgvConfirmedOrders.Columns["Items"].DefaultCellStyle.WrapMode = DataGridViewTriState.True;
+            dgvConfirmedOrders.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
             // Add controls to panel
             pnlConfirmedOrders.Controls.Add(dgvConfirmedOrders);
@@ -983,6 +987,13 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                     }
                 }
 
+                // Special formatting for the Products column
+                if (e.ColumnIndex == dgvConfirmedOrders.Columns["Items"].Index)
+                {
+                    e.CellStyle.Font = new Font(dgvConfirmedOrders.Font.FontFamily, dgvConfirmedOrders.Font.Size - 0.5f);
+                    e.CellStyle.Padding = new Padding(2, 2, 2, 2);
+                }
+
                 // Alternate row coloring for better readability
                 if (e.RowIndex % 2 == 0)
                 {
@@ -1326,8 +1337,34 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                 if (remainingAmount <= 0 && paymentStatus != "Completed")
                     paymentStatus = "Paid";
 
-                // Count order items
-                int itemCount = repository.GetOrderItemCount(order.OrderID);
+                // Get order items with product details to show product names
+                var orderItems = repository.GetOrderItemsWithProductDetails(order.OrderID);
+                
+                // Create a formatted list of product names
+                string productsList = "";
+                if (orderItems != null && orderItems.Any())
+                {
+                    var productNames = new List<string>();
+                    foreach (var item in orderItems)
+                    {
+                        if (item.Product != null)
+                        {
+                            // Format as "Product (Qty)" if quantity > 1, otherwise just "Product"
+                            string productEntry = item.Product.Model;
+                            if (item.Quantity > 1)
+                                productEntry += $" ({item.Quantity})";
+                            
+                            productNames.Add(productEntry);
+                        }
+                    }
+                    
+                    // Join product names with commas
+                    productsList = string.Join(", ", productNames);
+                }
+                else
+                {
+                    productsList = "(No items)";
+                }
 
                 // Add row to grid
                 if (order.Patient?.User != null)
@@ -1340,7 +1377,7 @@ namespace HearingClinicManagementSystem.UI.Receptionist
                         totalPaid,
                         remainingAmount,
                         paymentStatus,
-                        itemCount
+                        productsList  // Show product names instead of count
                     );
                 }
             }
