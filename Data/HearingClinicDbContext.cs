@@ -203,6 +203,10 @@ namespace HearingClinicManagementSystem.Data
                 .HasForeignKey(it => it.ProductID)
                 .WillCascadeOnDelete(false);
 
+            // Add MySQL-specific type mappings
+            modelBuilder.Properties<TimeSpan>()
+                .Configure(c => c.HasColumnType("time"));
+
             base.OnModelCreating(modelBuilder);
         }
     }
